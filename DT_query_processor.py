@@ -1466,7 +1466,13 @@ PRINT 'All files executed successfully within single transaction.';"""
                             result['error'] = str(file_error)
                             execution_results[key] = result
                             
-                            self.logger.error(f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - {file_info['table_name']} FAILED: {file_error}")
+                            self.logger.error(
+                                f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - "
+                                f"{file_info['table_name']} FAILED\n"
+                                f"  file      : {file_info.get('file_path')}\n"
+                                f"  exception : {type(file_error).__name__}: {file_error}",
+                                exc_info=True,
+                            )
                             self.logger.error(f"ROLLING BACK entire transaction due to error in {file_info['table_name']}")
                             
                             # Log the problematic SQL content for debugging
@@ -1517,7 +1523,11 @@ PRINT 'All files executed successfully within single transaction.';"""
                     trans.rollback()
                     total_end_time = time.time()
                     
-                    self.logger.error(f"Transaction ROLLED BACK after {total_end_time - total_start_time:.2f}s due to error: {transaction_error}")
+                    self.logger.error(
+                        f"Transaction ROLLED BACK after {total_end_time - total_start_time:.2f}s "
+                        f"due to error: {type(transaction_error).__name__}: {transaction_error}",
+                        exc_info=True,
+                    )
                     
                     # Mark all executed files as rolled back
                     for result in execution_results.values():
@@ -1531,7 +1541,11 @@ PRINT 'All files executed successfully within single transaction.';"""
                     successful_executions = 0  # No files were actually committed
                     
         except Exception as conn_error:
-            self.logger.error(f"Connection error during SQLAlchemy execution: {conn_error}")
+            self.logger.error(
+                f"Connection error during SQLAlchemy execution: "
+                f"{type(conn_error).__name__}: {conn_error}",
+                exc_info=True,
+            )
             
             # Mark all results as failed due to connection error
             for key, file_info in sql_files.items():
@@ -1921,8 +1935,19 @@ PRINT 'All files executed successfully within single transaction.';"""
                             'transaction_committed': False
                         }
                         
-                        self.logger.error(f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - {file_info['table_name']} FAILED: {file_error}")
-                        
+                        # Full detail, not just str(e): the SQLSTATE/driver text and
+                        # the traceback are what make a failure diagnosable from the
+                        # log file alone, without re-running to watch the terminal.
+                        self.logger.error(
+                            f"[{i}/{len(sql_files)}] seq {file_info['sequence']:02d} "
+                            f"{filename} FAILED after {execution_time:.2f}s\n"
+                            f"  file      : {file_info.get('file_path')}\n"
+                            f"  table     : {file_info.get('table_name')}\n"
+                            f"  exception : {type(file_error).__name__}: {file_error}\n"
+                            f"  sql (first 500 chars):\n{file_info.get('sql_content', '')[:500]}",
+                            exc_info=True,
+                        )
+
                         if not continue_on_error:
                             raise file_error
                 
@@ -1938,7 +1963,8 @@ PRINT 'All files executed successfully within single transaction.';"""
                 total_end_time = time.time()
                 self.logger.error(
                     f"SQL execution stopped after {total_end_time - total_start_time:.2f}s: "
-                    f"{transaction_error}"
+                    f"{type(transaction_error).__name__}: {transaction_error}",
+                    exc_info=True,
                 )
 
                 self._log_timing_summary(execution_results)
@@ -1954,7 +1980,11 @@ PRINT 'All files executed successfully within single transaction.';"""
                     pass
         
         except Exception as conn_error:
-            self.logger.error(f"Connection error during PyODBC execution: {conn_error}")
+            self.logger.error(
+                f"Connection error during PyODBC execution: "
+                f"{type(conn_error).__name__}: {conn_error}",
+                exc_info=True,
+            )
             
             # Mark all results as failed due to connection error
             for key, file_info in sql_files.items():
@@ -2114,7 +2144,12 @@ PRINT 'All files executed successfully within single transaction.';"""
                 
             else:
                 self.logger.error(f"Master file execution FAILED - all changes should be rolled back")
-                self.logger.error(f"Error output: {output[:500]}...")
+                # Full sqlcmd output, not a 500-char slice: the message that names
+                # the failing statement is often past the truncation point.
+                self.logger.error(
+                    f"Master file : {master_file_path}\n"
+                    f"Full sqlcmd output:\n{output}"
+                )
                 
                 # Since SQLCMD failed, assume all operations were rolled back
                 for i, (key, file_info) in enumerate(sql_files.items(), 1):
@@ -2139,7 +2174,10 @@ PRINT 'All files executed successfully within single transaction.';"""
             return execution_results
             
         except Exception as e:
-            self.logger.error(f"Error executing master file: {e}")
+            self.logger.error(
+                f"Error executing master file: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             
             # Create error results for all files
             for i, (key, file_info) in enumerate(sql_files.items(), 1):
@@ -2220,7 +2258,12 @@ PRINT 'All files executed successfully within single transaction.';"""
                     self.logger.info(f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - {file_info['table_name']}: {rows_affected:,} rows affected in {end_time - start_time:.2f}s")
                 else:
                     result['error'] = output
-                    self.logger.error(f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - {file_info['table_name']} FAILED: {output}")
+                    self.logger.error(
+                        f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - "
+                        f"{file_info['table_name']} FAILED\n"
+                        f"  file   : {file_info['file_path']}\n"
+                        f"  sqlcmd output:\n{output}"
+                    )
                     self.logger.error(f"STOPPING execution due to error (strict mode)")
                     
                     execution_results[key] = result
@@ -2246,7 +2289,13 @@ PRINT 'All files executed successfully within single transaction.';"""
                     
             except Exception as e:
                 result['error'] = str(e)
-                self.logger.error(f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - {file_info['table_name']} FAILED: {e}")
+                self.logger.error(
+                    f"[{i}/{len(sql_files)}] {file_info['sequence']:02d} - "
+                    f"{file_info['table_name']} FAILED\n"
+                    f"  file      : {file_info.get('file_path')}\n"
+                    f"  exception : {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
                 self.logger.error(f"STOPPING execution due to exception (strict mode)")
                 
                 execution_results[key] = result

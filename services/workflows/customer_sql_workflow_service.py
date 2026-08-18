@@ -49,15 +49,134 @@ class CustomerSQLWorkflowService:
                 status_update_result,
             )
 
-            print(f"\n{'='*50}")
-            print(f'STATUS CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
-            print(f"Result: {status_check_result.get('status_message', 'N/A')}")
-            print(f"Invalid statuses found: {len(status_check_result.get('invalid_statuses', []))}")
-            print(f"{'='*50}")
+            # customer_logger has a console handler, so these still show in the
+            # terminal - they now land in the processing log as well.
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(f'STATUS CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {status_check_result.get('status_message', 'N/A')}")
+            invalid_statuses = status_check_result.get('invalid_statuses', []) or []
+            customer_logger.info(f'Invalid statuses found: {len(invalid_statuses)}')
+            if invalid_statuses:
+                customer_logger.warning(f'Invalid status codes: {invalid_statuses}')
+            customer_logger.info(f"{'='*50}")
 
-            if not processor.approval_policy.confirm('Continue after status check?',
-                                                    GATE_SQL):
-                customer_logger.info('Not approved after status check; stopping customer')
+            bank_method_update_result = processor.update_payment_methods(customer_logger)
+            if not bank_method_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'bank_transaction_method_update_failed',
+                    bank_method_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                return failure_result
+
+            bank_method_check_result = processor._check_bank_transaction_methods_step(
+                customer_code,
+                db,
+                customer_logger,
+                bank_method_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'BANK TRANSACTION METHOD CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {bank_method_check_result.get('status_message', 'N/A')}")
+            invalid_methods = bank_method_check_result.get('invalid_methods', []) or []
+            customer_logger.info(f'Invalid methods found: {len(invalid_methods)}')
+            if invalid_methods:
+                customer_logger.warning(f'Invalid bank transaction methods: {invalid_methods}')
+            customer_logger.info(f"{'='*50}")
+
+            arrangement_type_update_result = processor.update_arrangement_types(customer_logger)
+            if not arrangement_type_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'arrangement_type_update_failed',
+                    arrangement_type_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                failure_result['bank_transaction_method_check'] = bank_method_check_result
+                failure_result['arrangement_type_update'] = arrangement_type_update_result
+                return failure_result
+
+            arrangement_type_check_result = processor._check_arrangement_types_step(
+                customer_code,
+                db,
+                customer_logger,
+                arrangement_type_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'ARRANGEMENT TYPE CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {arrangement_type_check_result.get('status_message', 'N/A')}")
+            invalid_types = arrangement_type_check_result.get('invalid_types', []) or []
+            customer_logger.info(f'Invalid types found: {len(invalid_types)}')
+            if invalid_types:
+                customer_logger.warning(f'Invalid arrangement types: {invalid_types}')
+            customer_logger.info(
+                f"Rows defaulted to '{arrangement_type_update_result.get('default_label', 'n/a')}': "
+                f"{arrangement_type_update_result.get('rows_defaulted', 0)}")
+            customer_logger.info(f"{'='*50}")
+
+            closure_reason_update_result = processor.update_closure_reasons(customer_logger)
+            if not closure_reason_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'closure_reason_update_failed',
+                    closure_reason_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                failure_result['bank_transaction_method_check'] = bank_method_check_result
+                failure_result['arrangement_type_update'] = arrangement_type_update_result
+                failure_result['arrangement_type_check'] = arrangement_type_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                return failure_result
+
+            closure_reason_check_result = processor._check_closure_reasons_step(
+                customer_code,
+                db,
+                customer_logger,
+                closure_reason_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'CLOSURE REASON CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {closure_reason_check_result.get('status_message', 'N/A')}")
+            defaulted_values = closure_reason_check_result.get('defaulted_values', []) or []
+            customer_logger.info(f'Unmapped values defaulted: {len(defaulted_values)}')
+            if defaulted_values:
+                customer_logger.warning(f'Unmapped closure reasons defaulted: {defaulted_values}')
+            customer_logger.info(
+                f"Rows defaulted to '{closure_reason_update_result.get('fallback_label', 'n/a')}': "
+                f"{closure_reason_update_result.get('rows_defaulted', 0)}")
+            customer_logger.info(f"{'='*50}")
+
+            pending_moves = getattr(processor, 'pending_file_moves', []) or []
+            pending_file_count = sum(len(entry['files']) for entry in pending_moves)
+            customer_logger.info(f'Files awaiting move (nothing moved yet): {pending_file_count}')
+
+            if not processor.approval_policy.confirm(
+                    'Continue after status, payment method, arrangement type and '
+                    'closure reason checks?',
+                    GATE_SQL):
+                customer_logger.info(
+                    'Not approved after status check; stopping customer. '
+                    f'{pending_file_count} file(s) left in place for a re-run'
+                )
                 failure_result = self.create_sql_failure_result(
                     customer_code,
                     db,
@@ -66,7 +185,17 @@ class CustomerSQLWorkflowService:
                 )
                 failure_result['ma_status_update'] = status_update_result
                 failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                failure_result['bank_transaction_method_check'] = bank_method_check_result
+                failure_result['arrangement_type_update'] = arrangement_type_update_result
+                failure_result['arrangement_type_check'] = arrangement_type_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                failure_result['closure_reason_check'] = closure_reason_check_result
                 return failure_result
+
+            # All three mapping checks are confirmed; only now do the staged files move
+            # out of the source folder.
+            file_move_summary = processor.flush_pending_file_moves(customer_logger)
 
             prepared_sql = self.prepare_sql_files_step(processor, customer_code, db, customer_logger)
             if not prepared_sql:
@@ -110,10 +239,21 @@ class CustomerSQLWorkflowService:
             )
             final_result['ma_status_update'] = status_update_result
             final_result['status_check'] = status_check_result
+            final_result['bank_transaction_method_update'] = bank_method_update_result
+            final_result['bank_transaction_method_check'] = bank_method_check_result
+            final_result['arrangement_type_update'] = arrangement_type_update_result
+            final_result['arrangement_type_check'] = arrangement_type_check_result
+            final_result['closure_reason_update'] = closure_reason_update_result
+            final_result['closure_reason_check'] = closure_reason_check_result
+            final_result['files_moved'] = file_move_summary
             return final_result
 
         except Exception as e:
-            customer_logger.error(f'Error during mixed SQL execution for [{db}] customer {customer_code}: {e}')
+            customer_logger.error(
+                f'Error during mixed SQL execution for [{db}] customer {customer_code}: '
+                f'{type(e).__name__}: {e}',
+                exc_info=True,
+            )
             return self.create_sql_failure_result(customer_code, db, customer_paths, 'unexpected_error', str(e))
 
     def initialize_sql_manager_step(
@@ -478,7 +618,10 @@ class CustomerSQLWorkflowService:
     ) -> Dict[str, Any]:
         sql_export_path = customer_paths.get('executed_queries', '') if customer_paths else ''
 
+        # Every path that returns a failure does so before the post-check flush, so the
+        # staged files are still sitting in the source folder.
         return {
+            'files_moved': {'groups': 0, 'files': 0},
             'sql_migration_completed': False,
             'sql_migration_error': f'{reason}: {error}' if error else reason,
             'sql_files_executed': 0,

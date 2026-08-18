@@ -104,6 +104,73 @@ class CustomerFileService:
 
         return validation_result
 
+    def reset_pending_file_moves(self, processor: Any) -> None:
+        """Drop anything queued but never flushed, so one customer cannot leak into the next."""
+        pending = getattr(processor, 'pending_file_moves', None)
+        if pending:
+            processor.logger.warning(
+                f'Discarding {len(pending)} queued file move(s) that were never flushed; '
+                'those files stay where they are'
+            )
+        processor.pending_file_moves = []
+
+    def queue_files_for_move(
+        self,
+        processor: Any,
+        files: List[str],
+        success: bool,
+        rows_processed: int = 0,
+        customer_paths: Dict[str, Path] = None,
+        error_message: str = '',
+    ) -> None:
+        """Record a move to perform later.
+
+        Files are no longer moved as each staging table is inserted; they stay put until
+        the status, bank transaction method and arrangement type checks have all been
+        confirmed, so declining at the approval gate leaves the source folder untouched
+        and the customer can simply be re-run.
+        """
+        if not hasattr(processor, 'pending_file_moves') or processor.pending_file_moves is None:
+            processor.pending_file_moves = []
+
+        processor.pending_file_moves.append(
+            {
+                'files': list(files),
+                'success': success,
+                'rows_processed': rows_processed,
+                'customer_paths': customer_paths,
+                'error_message': error_message,
+            }
+        )
+
+    def flush_pending_file_moves(self, processor: Any, customer_logger: Any = None) -> Dict[str, int]:
+        """Perform every queued move and clear the queue."""
+        pending = getattr(processor, 'pending_file_moves', None) or []
+        logger = customer_logger or processor.logger
+
+        if not pending:
+            logger.info('No files queued for movement')
+            processor.pending_file_moves = []
+            return {'groups': 0, 'files': 0}
+
+        total_files = sum(len(entry['files']) for entry in pending)
+        logger.info(
+            f'Moving {total_files} file(s) in {len(pending)} group(s) now that all checks are confirmed'
+        )
+
+        for entry in pending:
+            self.move_files_to_customer_folder(
+                processor,
+                files=entry['files'],
+                success=entry['success'],
+                rows_processed=entry['rows_processed'],
+                customer_paths=entry['customer_paths'],
+                error_message=entry['error_message'],
+            )
+
+        processor.pending_file_moves = []
+        return {'groups': len(pending), 'files': total_files}
+
     def move_files_to_customer_folder(
         self,
         processor: Any,

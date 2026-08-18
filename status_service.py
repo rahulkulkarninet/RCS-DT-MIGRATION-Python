@@ -1,7 +1,8 @@
-import re
-from typing import Any, Dict, List, Tuple
+﻿from typing import Any, Dict, List, Tuple
 
 import pandas as pd
+
+import text_normalization
 
 
 class StatusService:
@@ -234,34 +235,16 @@ class StatusService:
             .tolist()
         )
 
+    # Normalization now lives in text_normalization so the bank transaction method
+    # mapping can share the same rules. These stay as methods for existing callers.
     def status_match_key(self, value: str) -> str:
-        return re.sub(r'[^A-Z0-9]+', '', str(value).upper())
+        return text_normalization.match_key(value)
 
     def status_match_key_series(self, series: pd.Series) -> pd.Series:
-        return series.fillna('').astype(str).str.upper().str.replace(r'[^A-Z0-9]+', '', regex=True)
+        return text_normalization.match_key_series(series)
 
     def normalize_status_lookup_key(self, value: str) -> str:
-        normalized = str(value).strip().upper()
-        normalized = normalized.replace('â€“', '-')
-        normalized = normalized.replace('â€”', '-')
-        normalized = normalized.replace('�', '-')
-        normalized = normalized.replace('Â', ' ')
-        normalized = normalized.replace('\u2013', '-')
-        normalized = normalized.replace('\u2014', '-')
-        normalized = normalized.replace('\u00A0', ' ')
-        normalized = re.sub(r'�+', '-', normalized)
-        normalized = ' '.join(normalized.split())
-        return normalized
+        return text_normalization.normalize_lookup_key(value)
 
     def normalize_status_lookup_series(self, series: pd.Series) -> pd.Series:
-        normalized = series.fillna('').astype(str).str.strip().str.upper()
-        normalized = normalized.str.replace('â€“', '-', regex=False)
-        normalized = normalized.str.replace('â€”', '-', regex=False)
-        normalized = normalized.str.replace('�', '-', regex=False)
-        normalized = normalized.str.replace('Â', ' ', regex=False)
-        normalized = normalized.str.replace('\u2013', '-', regex=False)
-        normalized = normalized.str.replace('\u2014', '-', regex=False)
-        normalized = normalized.str.replace('\u00A0', ' ', regex=False)
-        normalized = normalized.str.replace(r'�+', '-', regex=True)
-        normalized = normalized.str.replace(r'\s+', ' ', regex=True).str.strip()
-        return normalized
+        return text_normalization.normalize_lookup_series(series)

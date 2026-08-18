@@ -46,6 +46,16 @@ CustomerProcessor wrappers delegate to CustomerFileService:
 - validate_customers_against_entity_mapping -> validate_customers_against_entity_mapping
 - validate_customer_files -> validate_customer_files
 - move_files_to_customer_folder -> move_files_to_customer_folder
+- queue_files_for_move -> queue_files_for_move
+- flush_pending_file_moves -> flush_pending_file_moves
+- reset_pending_file_moves -> reset_pending_file_moves
+
+File moves are deferred, not immediate. The staging workflow queues each group onto
+processor.pending_file_moves as its table is inserted; the queue is only flushed by
+CustomerSQLWorkflowService once the status, bank transaction method and arrangement
+type checks have all been confirmed at the GATE_SQL prompt. Any earlier return —
+a failed transform, a declined gate, an exception — leaves the source folder untouched
+so the customer can be re-run. process_customer_staging resets the queue per customer.
 
 Files:
 - customer_processor.py
@@ -84,6 +94,77 @@ Files:
 - customer_processor.py
 - services/workflows/customer_status_workflow_service.py
 
+### Bank transaction method normalization and validation workflow
+
+Runs immediately after the status workflow, applying the same pattern to the staging
+Payment_Method columns of RC_PAYMENTS, RC_DEAL and RC_ARRANGEMENT: rewrite in place to
+the canonical tblBankTransactionMethod label, then report anything still unmapped.
+Its results are surfaced through the same GATE_SQL approval prompt.
+
+CustomerProcessor wrappers delegate to CustomerBankTransactionMethodWorkflowService:
+
+- update_payment_methods -> update_payment_methods
+- _check_bank_transaction_methods_step -> check_bank_transaction_methods_step
+- _load_bank_transaction_method_mapping_frame -> load_bank_transaction_method_mapping_frame
+- _build_payment_method_resolution_frame -> build_payment_method_resolution_frame
+- _bulk_update_payment_methods -> bulk_update_payment_methods
+- _get_invalid_payment_methods_from_db -> get_invalid_payment_methods_from_db
+
+Files:
+- customer_processor.py
+- services/workflows/customer_bank_transaction_method_workflow_service.py
+
+### Arrangement type normalization and validation workflow
+
+Runs after the bank transaction method workflow, applying the same pattern to
+RC_ARRANGEMENT.Arrangement_Type against tblArrangementType. It differs from the other
+two in one respect: NULL/blank values are filled with the default label configured in
+variables/arrangement_type_codes.json ('Payment Plan' as shipped), so the default is
+data rather than a constant in code. Its results are surfaced through the same GATE_SQL
+approval prompt.
+
+CustomerProcessor wrappers delegate to CustomerArrangementTypeWorkflowService:
+
+- update_arrangement_types -> update_arrangement_types
+- _check_arrangement_types_step -> check_arrangement_types_step
+- _load_arrangement_type_mapping_frame -> load_arrangement_type_mapping_frame
+- _resolve_arrangement_type_default_label -> resolve_default_label
+- _build_arrangement_type_resolution_frame -> build_arrangement_type_resolution_frame
+- _bulk_update_arrangement_types -> bulk_update_arrangement_types
+- _get_invalid_arrangement_types_from_db -> get_invalid_arrangement_types_from_db
+
+Files:
+- customer_processor.py
+- services/workflows/customer_arrangement_type_workflow_service.py
+
+### Closure reason normalization and validation workflow
+
+Runs last of the four mapping workflows, over RC_ACCOUNT_EXTRACT.Reason_Closed against
+tblClosureReason. Its defaulting rule is the inverse of the arrangement type workflow:
+NULL and blank are left untouched, because absence of a closure reason is meaningful,
+while a value that fails to map is swept to the label configured as
+`default_for_unmapped` in variables/closure_reason_codes.json ('Other Reason - Please
+see notes' as shipped). The key is deliberately named differently from the arrangement
+type file's `default` so the two triggers cannot be confused.
+
+Because the sweep catches everything, the check reports which raw values were defaulted
+rather than which are invalid; invalid values only appear when the fallback is switched
+off with a blank `default_for_unmapped`.
+
+CustomerProcessor wrappers delegate to CustomerClosureReasonWorkflowService:
+
+- update_closure_reasons -> update_closure_reasons
+- _check_closure_reasons_step -> check_closure_reasons_step
+- _load_closure_reason_mapping_frame -> load_closure_reason_mapping_frame
+- _resolve_closure_reason_fallback_label -> resolve_fallback_label
+- _build_closure_reason_resolution_frame -> build_closure_reason_resolution_frame
+- _bulk_update_closure_reasons -> bulk_update_closure_reasons
+- _get_invalid_closure_reasons_from_db -> get_invalid_closure_reasons_from_db
+
+Files:
+- customer_processor.py
+- services/workflows/customer_closure_reason_workflow_service.py
+
 ### SQL migration workflow
 
 CustomerProcessor wrappers delegate to CustomerSQLWorkflowService:
@@ -110,6 +191,10 @@ CustomerProcessor also delegates to these existing services:
 - CustomerLifecycleService for customer-by-customer orchestration.
 - CustomerSummaryService for completion summary rendering.
 - StatusService for low-level status normalization and DB update primitives.
+- BankTransactionMethodService for low-level Payment_Method normalization and DB update primitives.
+- ArrangementTypeService for low-level Arrangement_Type normalization and DB update primitives.
+- ClosureReasonService for low-level Reason_Closed normalization and DB update primitives.
+- text_normalization for the lookup-key rules shared by all four mapping services.
 
 ## High-Level Call Graph
 
@@ -129,6 +214,16 @@ flowchart TD
     J --> K[CustomerSQLWorkflowService]
     K --> L[CustomerStatusWorkflowService]
     L --> M[StatusService]
+    K --> L2[CustomerBankTransactionMethodWorkflowService]
+    L2 --> M2[BankTransactionMethodService]
+    K --> L3[CustomerArrangementTypeWorkflowService]
+    L3 --> M4[ArrangementTypeService]
+    K --> L4[CustomerClosureReasonWorkflowService]
+    L4 --> M5[ClosureReasonService]
+    M --> M3[text_normalization]
+    M2 --> M3
+    M4 --> M3
+    M5 --> M3
     K --> N[SQLMigrationManager]
     K --> O[MigrationExecutionService]
 

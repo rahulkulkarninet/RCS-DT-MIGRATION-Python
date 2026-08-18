@@ -28,7 +28,8 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
           LUPScore ,
           RecoveryStartDate ,
           LUPLastPhoneContactDate ,
-          Z_DB
+          Z_DB,
+          Z_REF
         )
         SELECT 
                 {{LoadID}} ,
@@ -41,7 +42,7 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
                 P.ProductID ,
                 LEFT(RC.Debtor_Code, 250) ,
                 NULL ,
-                rc.Account_No ,
+                rc.Debt_Ref_No ,
                 RC.Short_Debt_Code ,
                 RC.Full_Debt_Code ,
                 ISNULL(OM.ContactIDDestination, 1) ,
@@ -56,11 +57,12 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
                 RC.Next_Act ,
                 RC.Last_Pay_Amt ,
                 RC.Last_Pay_Date ,
-                ISNULL(CRMap.ClosureReasonIDDestination, 1) ,
+                CRMap.ClosureReasonID ,
                 LEFT(RC.Score_Colour_DB, 30) ,
                 RC.Date_of_Debt ,
                 NULL ,
-                RC.SystemID
+                RC.SystemID,
+                RC.Account_No
         FROM    [RC_ACCOUNT_EXTRACT] RC
                 CROSS APPLY ( SELECT TOP 1
                                         AccountStatusID
@@ -83,7 +85,7 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
                               WHERE     Product = RC.WorkType
                               ORDER BY  ProductID
                             ) P
-                LEFT JOIN CSRC_ClosureReasonMapping CRMap ON RC.Reason_Closed = CRMap.ClosureReasonCode
+                LEFT JOIN tblClosureReason CRMap ON RC.Reason_Closed = CRMap.ClosureReason
                 LEFT JOIN CSRC_OperatorContactMapping OM ON  RC.Operator = OM.OperatorCode 
         ORDER BY 
                 RC.Last_Pay DESC

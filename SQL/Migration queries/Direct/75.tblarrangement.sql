@@ -15,7 +15,8 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
           StatusID ,
           ArrangementStatusID ,
           FrequencyID ,
-          LoadID
+          LoadID,
+          ArrangementDate
         )
         SELECT  A.AccountID ,		
                 DL.Deal_Amount ,
@@ -37,7 +38,8 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
                     ELSE 1 -- In Progress                    
                 END ,  
                 NULL ,  --Deal is an Ad-hoc arrangement, no frequency4
-                {{LoadID}}
+                {{LoadID}},
+                DL.Date_of_Deal
         FROM    [RC_DEAL] DL
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = DL.Extended_Debt_Code
         WHERE   A.LoadID = {{LoadID}}

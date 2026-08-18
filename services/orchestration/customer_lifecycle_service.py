@@ -95,7 +95,14 @@ class CustomerLifecycleService:
                 customer_results[customer_code] = combined_result
 
             except Exception as e:
-                processor.logger.error(f"Unexpected error processing [{db}] customer {customer_code}: {e}")
+                # processor.logger propagates to root, which now also feeds this
+                # customer's processing/error logs - so one call reaches the
+                # run-wide log, the terminal, and the customer's own files.
+                processor.logger.error(
+                    f"Unexpected error processing [{db}] customer {customer_code}: "
+                    f"{type(e).__name__}: {e}",
+                    exc_info=True,
+                )
 
                 # Store error result
                 customer_results[customer_code] = {

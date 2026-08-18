@@ -103,7 +103,7 @@
                 "ArrangementTypeID_Deal": {
                     "main_table": "tblArrangementType",
                     "column": "ArrangementTypeID",
-                    "default": 1,
+                    "default": 0,
                     "filter_col": "ArrangementType",
                     "filter_value": "Deal",
                     "data_type": "int"

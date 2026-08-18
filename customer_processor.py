@@ -10,13 +10,35 @@ from services.orchestration.customer_lifecycle_service import CustomerLifecycleS
 from services.io.customer_io_service import CustomerIOService
 from services.execution.migration_execution_service import MigrationExecutionService
 from services.setup.migration_setup_service import MigrationSetupService
+from services.workflows.customer_arrangement_type_workflow_service import (
+    CustomerArrangementTypeWorkflowService,
+)
+from services.workflows.customer_bank_transaction_method_workflow_service import (
+    CustomerBankTransactionMethodWorkflowService,
+)
+from services.workflows.customer_closure_reason_workflow_service import (
+    CustomerClosureReasonWorkflowService,
+)
 from services.workflows.customer_sql_workflow_service import CustomerSQLWorkflowService
 from services.workflows.customer_status_workflow_service import CustomerStatusWorkflowService
 from services.workflows.customer_staging_workflow_service import CustomerStagingWorkflowService
 from services.workflows.customer_summary_service import CustomerSummaryService
 from process_staging import StagingProcessor
 from memory_manager import MemoryManager
-from result_types import MixedExecutionResult, StatusCheckResult, StatusUpdateResult
+from result_types import (
+    ArrangementTypeCheckResult,
+    ArrangementTypeUpdateResult,
+    ClosureReasonCheckResult,
+    ClosureReasonUpdateResult,
+    BankTransactionMethodCheckResult,
+    BankTransactionMethodUpdateResult,
+    MixedExecutionResult,
+    StatusCheckResult,
+    StatusUpdateResult,
+)
+from arrangement_type_service import ArrangementTypeService
+from bank_transaction_method_service import BankTransactionMethodService
+from closure_reason_service import ClosureReasonService
 from status_service import StatusService
 from config_parser import ConfigParser
 from interaction import ApprovalPolicy, GATE_SQL, GATE_STAGING
@@ -47,12 +69,24 @@ class CustomerProcessor:
         self.memory_manager = MemoryManager(max_memory_percent=80.0)
         self.sql_manager = None
         self.status_service: Optional[StatusService] = None
+        self.bank_transaction_method_service: Optional[BankTransactionMethodService] = None
+        self.arrangement_type_service: Optional[ArrangementTypeService] = None
+        self.closure_reason_service: Optional[ClosureReasonService] = None
         self.migration_execution_service = MigrationExecutionService()
         self.migration_setup_service = MigrationSetupService()
         self.customer_io_service = CustomerIOService()
         self.customer_file_service = CustomerFileService()
         self.customer_sql_workflow_service = CustomerSQLWorkflowService()
         self.customer_status_workflow_service = CustomerStatusWorkflowService()
+        self.customer_bank_transaction_method_workflow_service = (
+            CustomerBankTransactionMethodWorkflowService()
+        )
+        self.customer_arrangement_type_workflow_service = (
+            CustomerArrangementTypeWorkflowService()
+        )
+        self.customer_closure_reason_workflow_service = (
+            CustomerClosureReasonWorkflowService()
+        )
         self.customer_staging_workflow_service = CustomerStagingWorkflowService()
         self.customer_lifecycle_service = CustomerLifecycleService()
         self.customer_summary_service = CustomerSummaryService()
@@ -71,6 +105,9 @@ class CustomerProcessor:
 
         self.processing_stats = []
         self._migration_processing_stats = []
+
+        # Staged file moves, held until all mapping checks are confirmed.
+        self.pending_file_moves: List[Dict[str, Any]] = []
 
         self.run_id = str(uuid.uuid4())
 
@@ -103,6 +140,9 @@ class CustomerProcessor:
             )
             self.config_parser.load_configs()
             self.status_service = StatusService(self.shared_db_helper)
+            self.bank_transaction_method_service = BankTransactionMethodService(self.shared_db_helper)
+            self.arrangement_type_service = ArrangementTypeService(self.shared_db_helper)
+            self.closure_reason_service = ClosureReasonService(self.shared_db_helper)
 
             # Set user using db_manager function
             user = self.shared_db_helper._get_current_username()
@@ -377,7 +417,7 @@ class CustomerProcessor:
         """Validate customer files before processing."""
         return self.customer_file_service.validate_customer_files(self, customer_code, db, files)
     
-    def move_files_to_customer_folder(self, files: list[str], success: bool, rows_processed: int = 0, 
+    def move_files_to_customer_folder(self, files: list[str], success: bool, rows_processed: int = 0,
                                  customer_paths: dict = None, error_message: str = ''):
         """Move files to customer-specific folders based on processing results."""
         self.customer_file_service.move_files_to_customer_folder(
@@ -388,6 +428,26 @@ class CustomerProcessor:
             customer_paths=customer_paths,
             error_message=error_message,
         )
+
+    def queue_files_for_move(self, files: list[str], success: bool, rows_processed: int = 0,
+                             customer_paths: dict = None, error_message: str = ''):
+        """Queue a file move to run once all mapping checks have been confirmed."""
+        self.customer_file_service.queue_files_for_move(
+            self,
+            files=files,
+            success=success,
+            rows_processed=rows_processed,
+            customer_paths=customer_paths,
+            error_message=error_message,
+        )
+
+    def flush_pending_file_moves(self, customer_logger: logging.Logger = None) -> Dict[str, int]:
+        """Perform every queued file move."""
+        return self.customer_file_service.flush_pending_file_moves(self, customer_logger)
+
+    def reset_pending_file_moves(self) -> None:
+        """Clear any queued moves left over from a previous customer."""
+        self.customer_file_service.reset_pending_file_moves(self)
 
     def process_customer_staging(self, customer_code: str, db: str, files: List[str], customer_logger: logging.Logger, customer_paths: dict) -> Dict[str, any]:
         """
@@ -487,7 +547,201 @@ class CustomerProcessor:
 
     def _normalize_status_lookup_series(self, series: pd.Series) -> pd.Series:
         return self.customer_status_workflow_service.normalize_status_lookup_series(self, series)
-    
+
+    def update_payment_methods(
+        self,
+        customer_logger: logging.Logger,
+    ) -> BankTransactionMethodUpdateResult:
+        """
+        Replace staging Payment_Method codes with standardized
+        tblBankTransactionMethod labels using
+        variables/bank_transaction_method_codes.json.
+        """
+        return self.customer_bank_transaction_method_workflow_service.update_payment_methods(
+            self,
+            customer_logger,
+        )
+
+    def _check_bank_transaction_methods_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        method_update_result: Optional[BankTransactionMethodUpdateResult] = None,
+    ) -> BankTransactionMethodCheckResult:
+        """Check bank transaction methods and report unmapped values."""
+        return self.customer_bank_transaction_method_workflow_service.check_bank_transaction_methods_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            method_update_result,
+        )
+
+    def _load_bank_transaction_method_mapping_frame(
+        self,
+        method_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_bank_transaction_method_workflow_service.load_bank_transaction_method_mapping_frame(
+            self,
+            method_mapping,
+        )
+
+    def _build_payment_method_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_bank_transaction_method_workflow_service.build_payment_method_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_payment_methods(self, resolution_frame: pd.DataFrame) -> Dict[str, int]:
+        return self.customer_bank_transaction_method_workflow_service.bulk_update_payment_methods(
+            self,
+            resolution_frame,
+        )
+
+    def _get_invalid_payment_methods_from_db(self) -> Dict[str, List[str]]:
+        return self.customer_bank_transaction_method_workflow_service.get_invalid_payment_methods_from_db(self)
+
+    def update_arrangement_types(
+        self,
+        customer_logger: logging.Logger,
+    ) -> ArrangementTypeUpdateResult:
+        """
+        Replace RC_ARRANGEMENT.Arrangement_Type codes with standardized
+        tblArrangementType labels using variables/arrangement_type_codes.json,
+        defaulting NULL/blank values to the label configured in that file.
+        """
+        return self.customer_arrangement_type_workflow_service.update_arrangement_types(
+            self,
+            customer_logger,
+        )
+
+    def _check_arrangement_types_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        type_update_result: Optional[ArrangementTypeUpdateResult] = None,
+    ) -> ArrangementTypeCheckResult:
+        """Check arrangement types and report unmapped values."""
+        return self.customer_arrangement_type_workflow_service.check_arrangement_types_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            type_update_result,
+        )
+
+    def _load_arrangement_type_mapping_frame(
+        self,
+        type_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_arrangement_type_workflow_service.load_arrangement_type_mapping_frame(
+            self,
+            type_mapping,
+        )
+
+    def _resolve_arrangement_type_default_label(self, default_label: Optional[str]) -> Optional[str]:
+        return self.customer_arrangement_type_workflow_service.resolve_default_label(
+            self,
+            default_label,
+        )
+
+    def _build_arrangement_type_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_arrangement_type_workflow_service.build_arrangement_type_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_arrangement_types(
+        self,
+        resolution_frame: pd.DataFrame,
+        default_label: Optional[str] = None,
+    ) -> Tuple[int, int]:
+        return self.customer_arrangement_type_workflow_service.bulk_update_arrangement_types(
+            self,
+            resolution_frame,
+            default_label,
+        )
+
+    def _get_invalid_arrangement_types_from_db(self) -> List[str]:
+        return self.customer_arrangement_type_workflow_service.get_invalid_arrangement_types_from_db(self)
+
+    def update_closure_reasons(
+        self,
+        customer_logger: logging.Logger,
+    ) -> ClosureReasonUpdateResult:
+        """
+        Replace RC_ACCOUNT_EXTRACT.Reason_Closed codes with standardized
+        tblClosureReason labels using variables/closure_reason_codes.json, sweeping
+        unmapped values to the configured fallback label. NULL/blank are left as-is.
+        """
+        return self.customer_closure_reason_workflow_service.update_closure_reasons(
+            self,
+            customer_logger,
+        )
+
+    def _check_closure_reasons_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        reason_update_result: Optional[ClosureReasonUpdateResult] = None,
+    ) -> ClosureReasonCheckResult:
+        """Check closure reasons and report defaulted and unmapped values."""
+        return self.customer_closure_reason_workflow_service.check_closure_reasons_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            reason_update_result,
+        )
+
+    def _load_closure_reason_mapping_frame(
+        self,
+        reason_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_closure_reason_workflow_service.load_closure_reason_mapping_frame(
+            self,
+            reason_mapping,
+        )
+
+    def _resolve_closure_reason_fallback_label(self, fallback_label: Optional[str]) -> Optional[str]:
+        return self.customer_closure_reason_workflow_service.resolve_fallback_label(
+            self,
+            fallback_label,
+        )
+
+    def _build_closure_reason_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_closure_reason_workflow_service.build_closure_reason_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_closure_reasons(
+        self,
+        resolution_frame: pd.DataFrame,
+        fallback_label: Optional[str] = None,
+    ) -> Tuple[int, int]:
+        return self.customer_closure_reason_workflow_service.bulk_update_closure_reasons(
+            self,
+            resolution_frame,
+            fallback_label,
+        )
+
+    def _get_invalid_closure_reasons_from_db(self) -> List[str]:
+        return self.customer_closure_reason_workflow_service.get_invalid_closure_reasons_from_db(self)
+
+
         
     def execute_mixed_sql_methods(self, customer_code: str, db: str, customer_logger: logging.Logger,
                              customer_paths: dict, staging_result: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,5 +1,3 @@
-USE [sqldb-glass-dev-rc]
-GO
 
 /****** Object:  Table [dbo].[RC_DEAL]    Script Date: 7/04/2025 2:08:47 PM ******/
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RC_DEAL]') AND type in (N'U'))
@@ -27,7 +25,7 @@ CREATE TABLE [dbo].[RC_DEAL](
 	[Last_Instal_Date] [datetime] NOT NULL,
 	[Payment_Dates] [nvarchar](1000) NULL,
 	[Payment_Amounts] [nvarchar](1000) NULL,
-	[Payment_Method] [nvarchar](10) NOT NULL,
+	[Payment_Method] [nvarchar](100) NOT NULL,
 	[SMS_Reminder] [nvarchar](1) NOT NULL,
 	[SMS_Mobile] [nvarchar](100) NULL,
 	[Total_Paid] [decimal](18, 2) NOT NULL,

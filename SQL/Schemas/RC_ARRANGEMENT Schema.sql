@@ -1,5 +1,4 @@
-USE [sqldb-glass-dev-rc]
-GO
+
 
 /****** Object:  Table [dbo].[RC_ARRANGEMENT]    Script Date: 7/05/2025 4:45:15 PM ******/
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RC_ARRANGEMENT]') AND type in (N'U'))
@@ -20,7 +19,7 @@ CREATE TABLE [dbo].[RC_ARRANGEMENT](
 	[Arrangement_Date] [datetime] NOT NULL,
 	[Agreed_Amount] [decimal](18, 2) NOT NULL,
 	[Op_Code] [nvarchar](10) NULL,
-	[Arrangement_Type] [nvarchar](10) NULL,
+	[Arrangement_Type] [nvarchar](100) NULL,
 	[No_Instalments] [int] NOT NULL,
 	[First_Instal_Date] [datetime] NOT NULL,
 	[Last_Instal_Date] [datetime] NOT NULL,
@@ -31,7 +30,7 @@ CREATE TABLE [dbo].[RC_ARRANGEMENT](
 	[SMS_Mobile] [nvarchar](100) NULL,
 	[Total_Paid] [decimal](18, 2) NOT NULL,
 	[Total_Outstanding] [decimal](18, 2) NOT NULL,
-	[Payment_Method] [nvarchar](10) NULL,
+	[Payment_Method] [nvarchar](100) NULL,
 	[DD_BSB_Code] [nvarchar](100) NULL,
 	[DD_Account_Number] [nvarchar](20) NULL,
 	[DD_Account_Name] [nvarchar](100) NULL,

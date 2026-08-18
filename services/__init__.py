@@ -5,6 +5,9 @@ from .io import CustomerFileService, CustomerIOService
 from .orchestration import CustomerLifecycleService
 from .setup import MigrationSetupService
 from .workflows import (
+    CustomerArrangementTypeWorkflowService,
+    CustomerBankTransactionMethodWorkflowService,
+    CustomerClosureReasonWorkflowService,
     CustomerSQLWorkflowService,
     CustomerStagingWorkflowService,
     CustomerStatusWorkflowService,
@@ -12,6 +15,9 @@ from .workflows import (
 )
 
 __all__ = [
+    "CustomerArrangementTypeWorkflowService",
+    "CustomerBankTransactionMethodWorkflowService",
+    "CustomerClosureReasonWorkflowService",
     "CustomerFileService",
     "CustomerIOService",
     "CustomerLifecycleService",

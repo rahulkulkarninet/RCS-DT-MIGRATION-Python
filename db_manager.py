@@ -1401,9 +1401,23 @@ class DatabaseHelper:
 
             format_stats: Dict[str, int] = {}
             formatters = self._build_bcp_formatters(table, column_order, format_stats)
-            rows_written, _ = self._write_bcp_file(
-                aligned(chunks), data_path, column_order, formatters, table_name
-            )
+            try:
+                # `chunks` is a lazy generator from the CSV reader, consumed here.
+                # Without its own handler a read failure lands in the outer
+                # `except` and gets reported as a bcp failure when bcp has not
+                # even been invoked yet - which is exactly how a CSV
+                # UnicodeDecodeError once surfaced as "bcp load failed".
+                rows_written, _ = self._write_bcp_file(
+                    aligned(chunks), data_path, column_order, formatters, table_name
+                )
+            except Exception as read_error:
+                self.logger.error(
+                    f'Failed reading source data for {schema}.{table_name} before '
+                    f'bcp was invoked: {type(read_error).__name__}: {read_error}',
+                    exc_info=True,
+                )
+                keep_temp = True
+                return False, 0
             if format_stats.get('rescaled'):
                 self.logger.warning(
                     f'{table_name}: {format_stats["rescaled"]} value(s) had more '
@@ -1480,11 +1494,14 @@ class DatabaseHelper:
             return True, copied
 
         except Exception as e:
+            # exc_info rather than logger.debug: root runs at INFO, so the
+            # traceback that would have named the real failure was being
+            # discarded exactly when it was needed.
             self.logger.error(
                 f'bcp load failed for {schema}.{table_name}: '
-                f'{type(e).__name__}: {e or "(no message)"}'
+                f'{type(e).__name__}: {e or "(no message)"}',
+                exc_info=True,
             )
-            self.logger.debug('Traceback:\n%s', traceback.format_exc())
             return False, 0
         finally:
             if keep_temp:

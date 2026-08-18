@@ -22,6 +22,10 @@ class CustomerStagingWorkflowService:
         customer_logger.info(f"PROCESSING CUSTOMER: [{db}] {customer_code}")
         customer_logger.info(f"{'='*70}")
 
+        # File moves are deferred until every mapping check is confirmed, so make sure a
+        # previous customer that aborted before its flush cannot move this one's files.
+        processor.reset_pending_file_moves()
+
         validation = self.validate_customer_files_step(processor, customer_code, db, files, customer_logger)
         if not validation['valid_tables']:
             return self.create_staging_failure_result(processor, customer_code, db, 'no_valid_tables', validation)
@@ -106,6 +110,10 @@ class CustomerStagingWorkflowService:
             table_groups = processor.staging_processor.group_files_by_table(files)
             financial_columns = processor.staging_processor.get_all_possible_financial_columns()
 
+            # Rows the parser cannot read are written here rather than dropped,
+            # so they can be inspected and re-fed for this customer.
+            processor.staging_processor.reject_dir = customer_paths.get('errors')
+
             total_rows_processed = 0
             total_rows_inserted = 0
             tables_with_data = 0
@@ -155,7 +163,7 @@ class CustomerStagingWorkflowService:
                         processor.logger.info(
                             f'[NO DATA] [{db}] {customer_code} - {table_name}: No data to process (empty files)'
                         )
-                        processor.move_files_to_customer_folder(
+                        processor.queue_files_for_move(
                             table_files,
                             success=True,
                             rows_processed=0,
@@ -171,7 +179,7 @@ class CustomerStagingWorkflowService:
                             processor.logger.info(
                                 f'[SUCCESS] [{db}] {customer_code} - {table_name}: {rows_inserted} rows inserted'
                             )
-                            processor.move_files_to_customer_folder(
+                            processor.queue_files_for_move(
                                 table_files,
                                 success=True,
                                 rows_processed=rows_inserted,
@@ -183,7 +191,7 @@ class CustomerStagingWorkflowService:
                             processor.logger.error(
                                 f'[FAILED] [{db}] {customer_code} - {table_name}: {error_message}'
                             )
-                            processor.move_files_to_customer_folder(
+                            processor.queue_files_for_move(
                                 table_files,
                                 success=False,
                                 rows_processed=csv_rows,
@@ -198,7 +206,7 @@ class CustomerStagingWorkflowService:
                     processor.logger.error(
                         f'Error processing {table_name} for [{db}] customer {customer_code}: {e}'
                     )
-                    processor.move_files_to_customer_folder(
+                    processor.queue_files_for_move(
                         table_files,
                         success=False,
                         rows_processed=0,

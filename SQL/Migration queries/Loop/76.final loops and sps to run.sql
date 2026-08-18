@@ -114,17 +114,18 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
           StatusID ,
           ArrangementStatusID ,
           FrequencyID ,
-          LoadID
+          LoadID,
+          ArrangementDate
         )
         SELECT  A.AccountID ,		
                 AR.Agreed_Amount ,
                 1 ,
                 {{CurrentSessionID}} ,
-                0,
+                AT.ArrangementTypeID ,--ArrangmentType, to run via mapping table
                 AR.No_Instalments ,
                 AR.First_Instal_Date ,
                 AR.Last_Instal_Date ,
-                1 ,--BankTransactionMethodID, to run via mapping table
+                BTM.BankTransactionMethodID ,--BankTransactionMethodID, to run via mapping table
                 AR.Total_Paid ,
                 AR.Total_Outstanding ,
                 AR.Bal_At_Time_Of_Offer ,
@@ -144,9 +145,13 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
 				   WHEN AR.Frequency = 'Y' THEN 5
 				   ELSE 0
 				END, 
-                {{LoadID}}
+                {{LoadID}},
+                Arrangement_Date
+
         FROM    [RC_ARRANGEMENT] AR
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = AR.Extended_Debt_Code
+                LEFT JOIN tblArrangementType AT ON AR.Arrangement_Type = AT.ArrangementType
+                LEFT JOIN tblBankTransactionMethod BTM ON AR.Payment_Method = BTM.BankTransactionMethod
         WHERE   A.LoadID = {{LoadID}}
 
 

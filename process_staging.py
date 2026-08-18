@@ -1,5 +1,6 @@
 import re
 import os
+import csv
 import gc
 import logging
 import time
@@ -10,6 +11,7 @@ from db_manager import DatabaseHelper
 from config_parser import ConfigParser
 from charset_normalizer import from_bytes
 from sqlalchemy import create_engine,text,inspect
+from text_normalization import normalize_text_series
 
 
 
@@ -148,6 +150,13 @@ class StagingProcessor:
         self.file_paths = {}
         self._table_columns_cache: Dict[tuple[str, str], Dict[str, Dict]] = {}
 
+        # Set by the caller to the customer's Errors folder so rows rejected by
+        # the tier 3 parser can be written out and re-fed. When unset the rows
+        # are still counted and logged, never silently dropped.
+        self.reject_dir: Optional[Path] = None
+        # Bad lines captured during the current load_staging_file_group call.
+        self.bad_line_count = 0
+
         # Regex pattern for sequence number extraction
         self.seq_re = re.compile(r"_(\d{4})\.csv$", re.I)
 
@@ -227,14 +236,26 @@ class StagingProcessor:
         """
         Detect the encoding of a file using charset_normalizer.
         Returns the detected encoding or 'utf-8' if detection fails.
+
+        An 'ascii' verdict is widened to cp1252. Detection only ever sees the
+        head of the file, so "no non-ASCII byte in the sample" does not mean the
+        file is ASCII: the SM9641 extracts carried a cp1252 NBSP (0xA0) megabytes
+        in, and reading them as ASCII raised UnicodeDecodeError and cost the whole
+        table. cp1252 is a superset of ASCII over 0x00-0x7F, so genuinely-ASCII
+        files decode byte-identically and only the padded ones change behaviour.
         """
         try:
             with open(file_path, 'rb') as handle:
                 sample = handle.read(sample_bytes)
             if not sample:
                 return 'utf-8'
-            result = from_bytes(sample, steps=1, chunk_size=1024).best()
-            return result.encoding if result else 'utf-8'
+            # No steps/chunk_size throttle: the previous steps=1, chunk_size=1024
+            # analysed 1 KB of the 256 KB actually read.
+            result = from_bytes(sample).best()
+            encoding = result.encoding if result else 'utf-8'
+            if encoding.lower().replace('-', '_') in ('ascii', 'us_ascii'):
+                return 'cp1252'
+            return encoding
         except Exception as e:
             self.logger.warning(f'Encoding detection failed for {file_path}: {e}')
             return 'utf-8'
@@ -384,8 +405,12 @@ class StagingProcessor:
                 **na_opts
             )
             return frame
-        except pd.errors.ParserError as e:
-            if "EOF inside string" in str(e) or "tokenizing data" in str(e):
+        # UnicodeDecodeError is a ValueError, so without naming it here an
+        # encoding fault skipped recovery entirely and fell to the handler below.
+        except (pd.errors.ParserError, UnicodeDecodeError) as e:
+            if (isinstance(e, UnicodeDecodeError)
+                    or "EOF inside string" in str(e)
+                    or "tokenizing data" in str(e)):
                 self.logger.warning(f'Parser error in {path.name}: {e}. Attempting recovery with more forgiving parameters...')
                 try:
                     # Recovery attempt with 'warn' + more forgiving settings
@@ -405,26 +430,45 @@ class StagingProcessor:
                 except Exception as recovery_error:
                     self.logger.error(f'Recovery failed for {path.name}: {recovery_error}')
                     self.logger.info(f'Attempting final recovery with skip mode for {path.name}...')
+                    bad_lines: List[List[str]] = []
+
+                    def capture_bad_line(line: List[str]) -> None:
+                        bad_lines.append(line)
+                        return None
+
                     try:
-                        # Final attempt with 'skip' as last resort
+                        # Final attempt. Bad lines are captured rather than
+                        # skipped, so nothing disappears without being counted.
                         frame = pd.read_csv(
                             path, sep=',', usecols=cols, index_col=False, names=cols,
                             header=0, encoding=encoding,
-                            on_bad_lines='skip',  # Only skip as last resort
+                            on_bad_lines=capture_bad_line,
                             dtype=str,
                             quoting=3,
                             engine='python',
                             **na_opts
                         )
-                        self.logger.warning(f'Final recovery successful for {path.name} - some data may have been skipped')
+                        if bad_lines:
+                            self._record_bad_lines(path, bad_lines)
+                        self.logger.warning(f'Final recovery successful for {path.name}')
                         return frame
-                    except:
-                        return pd.DataFrame(columns=cols)
+                    except Exception as final_error:
+                        self.logger.error(
+                            f'All recovery tiers failed for {path.name}: '
+                            f'{type(final_error).__name__}: {final_error}',
+                            exc_info=True,
+                        )
+                        raise
             else:
                 raise
         except Exception as e:
-            self.logger.error(f'Unexpected error reading {path.name}: {e}')
-            return pd.DataFrame(columns=cols)
+            # Previously returned an empty frame here, so an unreadable file
+            # loaded as zero rows and reconciled clean. Fail instead.
+            self.logger.error(
+                f'Unexpected error reading {path.name}: {type(e).__name__}: {e}',
+                exc_info=True,
+            )
+            raise
 
     def concat_files(self, files: List[str]) -> pd.DataFrame:
         """
@@ -432,6 +476,7 @@ class StagingProcessor:
         """
         parts: List[pd.DataFrame] = []
         ref_cols: List[str] = []
+        failures: List[str] = []
 
         for fp in sorted(map(Path, files), key=self.get_sequence_number):
             try:
@@ -451,7 +496,20 @@ class StagingProcessor:
 
                 parts.append(frame)
             except Exception as e:
-                self.logger.warning(f'Failed to load {fp.name}: {e}')
+                # Keep going so the log names every bad file, not just the first.
+                self.logger.error(
+                    f'Failed to load {fp.name}: {type(e).__name__}: {e}',
+                    exc_info=True,
+                )
+                failures.append(f'{fp.name} ({type(e).__name__}: {e})')
+
+        if failures:
+            # Skipping the file used to leave a partial table that reconciled
+            # clean and looked successful. Fail the group instead.
+            raise RuntimeError(
+                f'{len(failures)} of {len(files)} file(s) could not be read: '
+                + '; '.join(failures)
+            )
 
         if not parts:
             return pd.DataFrame()  # if no files were loaded, return empty DataFrame
@@ -541,6 +599,9 @@ class StagingProcessor:
                         continue
 
                     text = frame[col][populated].astype(str)
+                    # Before the length check, so truncation measures the value
+                    # that will actually be stored.
+                    text = normalize_text_series(text)
                     if max_length and max_length > 0:
                         long_values = int((text.str.len() > max_length).sum())
                         if long_values:
@@ -725,13 +786,32 @@ class StagingProcessor:
         """Yield raw chunks from one CSV, mirroring read_csv_file's fallbacks.
 
         Same three tiers as read_csv_file, but iterator-based so a file is never
-        held whole. Rows dropped by the skip tier are surfaced by the caller's
-        reconciliation rather than lost silently.
+        held whole.
+
+        Tier 3 captures bad lines rather than using on_bad_lines='skip', and
+        load_staging_file_group fails the table on a non-zero bad_line_count.
+        This is defence in depth, not an active guard: because every tier passes
+        names= and usecols=, pandas never classifies a line as bad - short rows
+        are padded with NaN and long rows are truncated to the named columns, so
+        on_bad_lines does not fire at all. Row count is therefore preserved by
+        construction, and the reconciliation in load_staging_file_group is what
+        actually protects it. The capture matters only if those kwargs change.
+
+        Note the tiers can disagree on row count for a value containing an
+        embedded newline: tier 1 keeps it as one row, tier 2 splits it into two.
+        Tier 1 handles all 731 SM9641 files, so this is latent, not active.
         """
         encoding = self.detect_encoding(path)
         headers = pd.read_csv(path, nrows=0, sep=',', encoding=encoding,
                               dtype=str).columns.str.strip().tolist()
         cols = [c for c in headers if c and not str(c).startswith('Unnamed')]
+
+        bad_lines: List[List[str]] = []
+
+        def capture_bad_line(line: List[str]) -> None:
+            """Tier 3 on_bad_lines hook: keep the row, do not emit it."""
+            bad_lines.append(line)
+            return None
 
         base = dict(sep=',', usecols=cols, index_col=False, names=cols, header=0,
                     encoding=encoding, dtype=str, chunksize=chunk_rows,
@@ -740,12 +820,13 @@ class StagingProcessor:
             dict(base, on_bad_lines='warn'),
             dict(base, on_bad_lines='warn', quoting=3, skipinitialspace=True,
                  engine='python', encoding_errors='replace'),
-            dict(base, on_bad_lines='skip', quoting=3, engine='python'),
+            dict(base, on_bad_lines=capture_bad_line, quoting=3, engine='python'),
         )
 
         for tier_index, kwargs in enumerate(tiers, start=1):
             try:
                 produced = False
+                bad_lines.clear()
                 with pd.read_csv(path, **kwargs) as reader:
                     for chunk in reader:
                         produced = True
@@ -753,25 +834,66 @@ class StagingProcessor:
                 if tier_index > 1:
                     self.logger.warning(
                         f'{path.name}: parsed with recovery tier {tier_index}'
-                        f'{" (bad lines skipped)" if tier_index == 3 else ""}'
                     )
+                if bad_lines:
+                    self._record_bad_lines(path, bad_lines)
                 return
-            except pd.errors.ParserError as e:
+            # UnicodeDecodeError is a ValueError, not a ParserError, so it used to
+            # escape this loop entirely and tier 2 - the tier that sets
+            # encoding_errors='replace' and would have recovered - never ran.
+            except (pd.errors.ParserError, UnicodeDecodeError) as e:
                 if produced:
                     # Already emitted rows on this tier; restarting would double
                     # them. Surface rather than silently truncate.
                     self.logger.error(
                         f'{path.name}: parser failed mid-file on tier {tier_index} '
-                        f'after yielding rows: {e}'
+                        f'after yielding rows: {type(e).__name__}: {e}'
                     )
                     raise
                 if tier_index == len(tiers):
-                    self.logger.error(f'{path.name}: all parse tiers failed: {e}')
+                    self.logger.error(
+                        f'{path.name}: all parse tiers failed: {type(e).__name__}: {e}'
+                    )
                     raise
                 self.logger.warning(
-                    f'{path.name}: tier {tier_index} failed ({e}); trying recovery tier '
-                    f'{tier_index + 1}'
+                    f'{path.name}: tier {tier_index} failed ({type(e).__name__}: {e}); '
+                    f'trying recovery tier {tier_index + 1}'
                 )
+
+    def _record_bad_lines(self, path: Path, bad_lines: List[List[str]]) -> None:
+        """Persist and count rows the parser could not parse.
+
+        Counting is what matters: load_staging_file_group folds bad_line_count
+        into its reconciliation and fails the table, so these rows can never pass
+        as a clean load. Writing them out is so they can actually be recovered.
+
+        Unreachable while the read kwargs pass names=/usecols= (see
+        _read_csv_chunks) - it exists so that a future kwargs change cannot
+        reintroduce silent row loss.
+        """
+        self.bad_line_count += len(bad_lines)
+        self.logger.error(
+            f'{path.name}: {len(bad_lines)} malformed line(s) could not be parsed '
+            f'and were NOT loaded'
+        )
+
+        if not self.reject_dir:
+            for line in bad_lines[:5]:
+                self.logger.error(f'  unparsed: {line}')
+            if len(bad_lines) > 5:
+                self.logger.error(f'  ... and {len(bad_lines) - 5} more')
+            return
+
+        try:
+            target = Path(self.reject_dir) / f'rejected_{path.stem}.csv'
+            with open(target, 'w', encoding='utf-8', newline='') as handle:
+                csv.writer(handle).writerows(bad_lines)
+            self.logger.error(f'  unparsed rows written to {target}')
+        except Exception as e:
+            # Never let a reject-file failure mask the rejects themselves.
+            self.logger.error(f'  could not write reject file for {path.name}: {e}')
+            for line in bad_lines[:5]:
+                self.logger.error(f'  unparsed: {line}')
 
     def iter_clean_chunks(self, files: List[str], table_name: str,
                           chunk_rows: int = 50000) -> Iterator[pd.DataFrame]:
@@ -854,6 +976,7 @@ class StagingProcessor:
         success = True
         error_message = ''
         start = time.time()
+        self.bad_line_count = 0
 
         if use_bcp:
             # Chunks are written to the bcp data file as they are produced, so
@@ -902,14 +1025,24 @@ class StagingProcessor:
                              f'inserted {rows_inserted}')
             self.logger.error(f'{table_name}: {error_message}')
 
+        # Rows the parser could not read never reach rows_read, so read ==
+        # inserted would otherwise reconcile clean while data was missing.
+        if self.bad_line_count and success:
+            success = False
+            error_message = (f'{self.bad_line_count} source line(s) could not be '
+                             f'parsed and were not loaded')
+            self.logger.error(f'{table_name}: {error_message}')
+
         self.logger.info(
             f'{table_name}: streamed {chunks} chunk(s), read {rows_read}, '
             f'inserted {rows_inserted} in {elapsed:.1f}s'
+            + (f', {self.bad_line_count} unparsed' if self.bad_line_count else '')
         )
         return {
             'success': success,
             'rows_read': rows_read,
             'rows_inserted': rows_inserted,
+            'rows_unparsed': self.bad_line_count,
             'chunks': chunks,
             'duration_seconds': round(elapsed, 2),
             'financial_summary': accumulator.result(),
