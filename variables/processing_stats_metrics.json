@@ -1,0 +1,599 @@
+{
+    "tblAccount": {
+        "base_config":{
+            "table": "tblAccount",
+            "filter_by": "loadid",
+            "from_table": "RC_ACCOUNT_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Accounts migrated",
+                "result_column": "rows_inserted"
+            },
+            {
+                "type": "sum",
+                "column": "LUPTotalPrincipal",
+                "description": "Total Principal migrated",
+                "result_column": "total_debt"
+            },
+            {
+                "type": "sum",
+                "column": "LUPTotalCost",
+                "description": "Total Cost migrated",
+                "result_column": "total_costs"
+            },
+            {
+                "type": "sum",
+                "column": "(LUPTotalPayment - LUPTotalOverPaymentTrust)",
+                "description": "Total Payment migrated",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "LUPTotalOverPaymentTrust",
+                "description": "Total Overpayment Trust migrated",
+                "result_column":"total_overpayments"
+            }
+        ]
+
+    },
+    "tblAccount_Contact": {
+        "base_config":{
+            "table": "tblAccount_Contact",
+            "filter_by": "CreateSessionID",
+            "from_table": "tblAccount"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Contact details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblAccountSpecifics": {
+        "base_config":{
+            "table": "tblAccountSpecifics",
+            "filter_by": "CreateSessionID",
+            "from_table": "tblMetaValue_AccountSpecificsGroup"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Value Account Specifics details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },    
+    "tblAddress": {
+        "base_config":{
+            "table": "tblAddress",
+            "filter_by": "loadid",
+            "from_table": "tblContact"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Address details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblAddressAudit": {
+        "base_config":{
+            "table": "tblAddressAudit",
+            "filter_by": "loadid",
+            "from_table": "tblAddress"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Address details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblAllocation": {
+        "base_config":{
+            "table": "tblAllocation",
+            "filter_by": "CreateSessionID",
+            "from_table": "tblpayment"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Allocation details migrated",
+                "result_column": "rows_inserted"
+            },
+            {
+                "type": "sum",
+                "column": "(Allocation)",
+                "description": "Total Payment details migrated",
+                "result_column": "total_paid"
+            }
+        ]
+    },
+    "tblArrangement": {
+        "base_config":{
+            "table": "tblArrangement",
+            "filter_by": "loadid",
+            "from_table": "RC_DEAL,RC_ARRANGEMENT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Arrangements and Deals migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblBankTransaction": {
+        "base_config":{
+            "table": "tblBankTransaction",
+            "filter_by": "loadid",
+            "from_table": "RC_PAYMENTS"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "BankTransactionID",
+                "description": "Total Bank Transaction details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblCallHistory": {
+        "base_config":{
+            "table": "tblCallHistory",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DEBT_CONTACTS"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "CallHistoryID",
+                "description": "Total Call History details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblCommunication": {
+        "base_config":{
+            "table": "tblCommunication",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DOCHIST_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "CommunicationID",
+                "description": "Total Doc details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblContact": {
+        "base_config":{
+            "table": "tblContact",
+            "filter_by": "loadid",
+            "from_table": "RC_DEBTOR"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Contact details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblContactAudit": {
+        "base_config":{
+            "table": "tblContactAudit",
+            "filter_by": "loadid",
+            "from_table": "RC_DEBTOR"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Contact details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblContactDetail": {
+        "base_config":{
+            "table": "tblContactDetail",
+            "filter_by": "loadid",
+            "from_table": "RC_RELATEDPARTY"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Contact details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblContactDetailAudit": {
+        "base_config":{
+            "table": "tblContactDetailAudit",
+            "filter_by": "loadid",
+            "from_table": "RC_RELATEDPARTY"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactDetailAuditID",
+                "description": "Total Contact Audit details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblCost": {
+        "base_config":{
+            "table": "tblCost",
+            "filter_by": "loadid",
+            "from_table": "RC_COSTS_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Cost details migrated",
+                "result_column": "rows_inserted"
+            },
+            {
+                "type": "sum",
+                "column": "AccountCost",
+                "description": "Total Cost migrated",
+                "result_column": "total_costs"
+            }
+        ]
+    },
+    "tblDebtContact": {
+        "base_config":{
+            "table": "tblDebtContact",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DEBT_CONTACTS"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Debt Contact details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblDocument": {
+        "base_config":{
+            "table": "tblDocument",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DOCHIST_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Doc details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblEmail": {
+        "base_config":{
+            "table": "tblEmail",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_EMAIL_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Email details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblEntry": {
+        "base_config":{
+            "table": "tblEntry",
+            "filter_by": "loadid",
+            "from_table": "RC_NOTES_EXTRACT,RC_TREATMENT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Entry details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblInvoice": {
+        "base_config":{
+            "table": "tblInvoice",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_STATEMENT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Invoice details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblLetter": {
+        "base_config":{
+            "table": "tblLetter",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DOCHIST_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Doc details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblLoad": {
+        "base_config":{
+            "table": "tblLoad",
+            "filter_by": "loadid",
+            "from_table": ""
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "LoadID",
+                "description": "Total Load details",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblMetaValue_AccountSpecifics": {
+        "base_config":{
+            "table": "tblMetaValue_AccountSpecifics",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_ACCOUNT_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "MetaField_AccountSpecificsID",
+                "description": "Total Meta Value Account Specifics details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblMetaValue_AccountSpecificsGroup": {
+        "base_config":{
+            "table": "tblMetaValue_AccountSpecificsGroup",
+            "filter_by": "CreateSessionID",
+            "from_table": "tblAccount"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "Z_AccountID",
+                "description": "Total Meta Value Account Specifics Group details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblMetaValue_DocumentGroup": {
+        "base_config":{
+            "table": "tblMetaValue_DocumentGroup",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_DOCHIST_EXTRACT"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "Metavalue_DocumentGroupID",
+                "description": "Total Doc details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblPayment": {
+        "base_config":{
+            "table": "tblPayment",
+            "filter_by": "loadid",
+            "from_table": "RC_PAYMENTS"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Payment details migrated",
+                "result_column": "rows_inserted"
+            },
+            {
+                "type": "sum",
+                "column": "LUPAllocatedPrincipal",
+                "description": "Total Principal migrated",
+                "result_column": "total_debt"
+            },
+            {
+                "type": "sum",
+                "column": "LUPAllocatedCost",
+                "description": "Total Cost migrated",
+                "result_column": "total_costs"
+            },
+            {
+                "type": "sum",
+                "column": "(Payment-LUPAllocatedOverpayment)",
+                "description": "Total Payment details migrated",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "(LUPAllocatedOverpayment)",
+                "description": "Total Overpayment details migrated",
+                "result_column": "total_overpayments"
+            },
+            {
+                "type": "sum",
+                "column": "(Commission)",
+                "description": "Total Commission details migrated",
+                "result_column": "total_commission"
+            }
+        ]
+    },
+    "tblPrincipal": {
+        "base_config":{
+            "table": "tblPrincipal",
+            "filter_by": "loadid",
+            "from_table": "RC_DRDBINVOICE"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Principal details migrated",
+                "result_column": "rows_inserted"
+            },
+            {
+                "type": "sum",
+                "column": "(LUPAllocatedAmount+LUPBalance)",
+                "description": "Total Principal migrated",
+                "result_column": "total_debt"
+            },
+            {
+                "type": "sum",
+                "column": "(LUPAllocatedAmount)",
+                "description": "Total Payment migrated",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "(LUPBalance)",
+                "description": "Total Outstanding migrated",
+                "result_column": "total_outstanding"
+            }
+        ]
+    },
+    "tblProofOfIdentity": {
+        "base_config":{
+            "table": "tblProofOfIdentity",
+            "filter_by": "loadid",
+            "from_table": "RC_POI"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Entry details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblSession": {
+        "base_config":{
+            "table": "tblSession",
+            "filter_by": "SessionID",
+            "from_table": ""
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "SessionID",
+                "description": "Total Session details",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblSMSOutput": {
+        "base_config":{
+            "table": "tblSMSOutput",
+            "filter_by": "CreateSessionID",
+            "from_table": "RC_SMS"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total SMS details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },  
+    "tblTimeOnAccount": {
+        "base_config":{
+            "table": "tblTimeOnAccount",
+            "filter_by": "sessionid",
+            "from_table": "tblAccount"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "ContactID",
+                "description": "Total Time On Account details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblWorkflowLine": {
+        "base_config":{
+            "table": "tblWorkflowLine",
+            "filter_by": "loadid",
+            "from_table": "tblAccount"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Workflow Line details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    },
+    "tblWorkflowLineAudit": {
+        "base_config":{
+            "table": "tblWorkflowLineAudit",
+            "filter_by": "loadid",
+            "from_table": "tblAccount"
+        },
+        "metrics": [
+            {
+                "type": "count",
+                "column": "AccountID",
+                "description": "Total Workflow Line details migrated",
+                "result_column": "rows_inserted"
+            }
+        ]
+    }
+}
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

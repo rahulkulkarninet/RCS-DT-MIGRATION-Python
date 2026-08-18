@@ -1,0 +1,522 @@
+{
+  "Instalment Arrangement – Active": [
+    "INSTAL",
+    "INSTALC",
+    "INSTALD",
+    "INSTALNEWDEBT",
+    "INSTALNEWDEBT2",
+    "INSTALNEWDEBT3",
+    "PAYARR",
+    "NOARMMTPAYING",
+    "ARRANGEMENT"
+  ],
+  "Instalment Arrangement – Arrears": [
+    "INSTALA",
+    "INSTALA1",
+    "INSTALA2",
+    "INSTALS1"
+  ],
+  "Instalment Arrangement – Broken": [
+    "INSTALB"
+  ],
+  "Informal Paying Arrangement": [
+    "NOARMMTPAYING"
+  ],
+  "Dishonoured Payment": [
+    "DISPMT",
+    "CCDECLINED"
+  ],
+  "Settle for Less": [
+    "SFL",
+    "SETTCC",
+    "SETTDD",
+    "SETT (Settle for Less)"
+  ],
+  "Settle for Less – Dishonoured": [
+    "SFLB"
+  ],
+  "Settlement – Paid in Full": [
+    "SETT",
+    "ALL IN SETTLEMENT"
+  ],
+  "Bankruptcy Pending": [
+    "BKTDP",
+    "BKTCLAIM"
+  ],
+  "Bankruptcy Confirmed": [
+    "BRUPTCONF",
+    "BRUPCONF",
+    "BKTD"
+  ],
+  "Part IX Debt Agreement": [
+    "PARTIX"
+  ],
+  "Part IX – Instalments": [
+    "P9INST"
+  ],
+  "Liquidator / Administrator Appointed": [
+    "LIQ"
+  ],
+  "Deregistered Company": [
+    "DEREG"
+  ],
+  "New File": [
+    "NEWFILE",
+    "NEWF",
+    "NFTF",
+    "NEWINS",
+    "NEWUNI",
+    "NEWCFF",
+    "NEWSCAN"
+  ],
+  "Untreated": [
+    "UNTREATED"
+  ],
+  "Treatment Allocated": [
+    "TREATMENT",
+    "TREATHOLD",
+    "TACT1"
+  ],
+  "Treatment – End of Process": [
+    "TREATEOP",
+    "TREATMENT-EOP",
+    "TREATMENT EOP"
+  ],
+  "First Demand Letter": [
+    "LETT1",
+    "First Demand Letter"
+  ],
+  "Second Demand Letter": [
+    "LETT2"
+  ],
+  "Phone Attempt": [
+    "PHONE",
+    "PHONE1",
+    "[D] First Telephone Call – Attempt1",
+    "1ST TELEPHONE DEMAND REQUIRED",
+    "ALL PHONE Statuses",
+    "CALL1",
+    "CALL1A",
+    "CALL2",
+    "CALL",
+    "CALL2A"
+  ],
+  "Unable to Contact": [
+    "UNABCON",
+    "DISC",
+    "NTNP"
+  ],
+  "Trace – Possible Lead": [
+    "TRACEPL (both duplicate entries)"
+  ],
+  "Trace – No Lead": [
+    "TRACENL",
+    "TRACING T/PARTY – NO LEAD",
+    "TRACEPL"
+  ],
+  "Demand Made": [
+    "DEM",
+    "DEMAND"
+  ],
+  "Letter of Demand": [
+    "LOD"
+  ],
+  "Final Demand": [
+    "FINDEM",
+    "SAFINDEM"
+  ],
+  "Discount / Settlement Offer": [
+    "OFFER",
+    "OFF"
+  ],
+  "Negotiating Payment": [
+    "NEG"
+  ],
+  "Follow-up Call Required": [
+    "RECALL"
+  ],
+  "Field Call Issued": [
+    "FCALL"
+  ],
+  "IVR Campaign": [
+    "IVR",
+    "IVR2"
+  ],
+  "Final Attempt – Close File": [
+    "FINATCL"
+  ],
+  "Final Attempt – Review for Legal": [
+    "FINATLEG"
+  ],
+  "Proof of Loss Sent": [
+    "POLSET",
+    "POLSET1",
+    "POLSET2",
+    "POLNEG",
+    "POLS",
+    "POLIDT",
+    "NFPOL"
+  ],
+  "Proof of Loss Completed": [
+    "POLCOMP"
+  ],
+  "Data Wash Required": [
+    "DWREQD",
+    "MRLA"
+  ],
+  "D&B / DNBI Search Required": [
+    "DNBI"
+  ],
+  "Searches Required": [
+    "SCHREQ"
+  ],
+  "Review File": [
+    "REVIEW"
+  ],
+  "Account Factored": [
+    "FACTORED"
+  ],
+  "Complaint Lodged": [
+    "COMPLAINT"
+  ],
+  "Complaint – 14 Day Hold": [
+    "COMPLAINTHOLD"
+  ],
+  "Deceased – Pending Confirmation": [
+    "DEC",
+    "PDECEASED"
+  ],
+  "Account in Dispute": [
+    "DISPT",
+    "CLDISPUTE",
+    "DISPUTE"
+  ],
+  "Dispute – Liability": [
+    "DISPL"
+  ],
+  "Dispute – Quantum": [
+    "DISPQ"
+  ],
+  "Financial Hardship": [
+    "FHSP",
+    "HRD",
+    "HSP",
+    "FSHP"
+  ],
+  "Financial Hardship – On Hold": [
+    "FHSPHOLD",
+    "HOLD-FDV"
+  ],
+  "Hardship Docs Sent": [
+    "FHSPSOP"
+  ],
+  "Hardship Documents Received": [
+    "FHSPDOC"
+  ],
+  "Hardship – SOFP Required": [
+    "FHSPREQ"
+  ],
+  "Hardship – More Information Required": [
+    "FHSPINFO"
+  ],
+  "Hardship – Awaiting Client Instructions": [
+    "FHSPAWIC"
+  ],
+  "Financial Hardship Approved": [
+    "FHSPAPP"
+  ],
+  "Financial Hardship Declined": [
+    "FHSPDCLN"
+  ],
+  "Financial Hardship Review": [
+    "FHSPREVIEW"
+  ],
+  "Hardship Final": [
+    "HSFINAL"
+  ],
+  "Hardship Arrangement Broken": [
+    "HSBROKEN"
+  ],
+  "Vulnerable Customer": [
+    "VULC"
+  ],
+  "Vulnerable Customer – Family / Domestic Violence": [
+    "FDV"
+  ],
+  "General Hold": [
+    "HOLD",
+    "FOH",
+    "AVHOLD",
+    "CLHOLD",
+    "HOLDS",
+    "TREATPAS",
+    "TREATMENTHOLD",
+    "AGEEXCLUSION"
+  ],
+  "Awaiting Instructions – Client": [
+    "AWIC",
+    "HOLDK",
+    "AWCI",
+    "Invoice",
+    "AWCIR"
+  ],
+  "Awaiting Instructions – Legal": [
+    "AWIL"
+  ],
+  "Awaiting Payment Update – Client": [
+    "AWIP"
+  ],
+  "Awaiting Refund": [
+    "AWREF"
+  ],
+  "Awaiting Recall by Client": [
+    "RECALLED"
+  ],
+  "Account Paid – Awaiting Recall": [
+    "PAID",
+    "CURED"
+  ],
+  "Statute Barred": [
+    "STATBAR"
+  ],
+  "Activity Suspended": [
+    "SUSPEND"
+  ],
+  "Fraud": [
+    "FRAUD"
+  ],
+  "Debtor Living Overseas": [
+    "OSEAS"
+  ],
+  "Low Balance": [
+    "LOWBAL"
+  ],
+  "Dispute – Forwarded to Client": [
+    "DISPCLT",
+    "DSP"
+  ],
+  "Enquiry": [
+    "ENQUIRY",
+    "PORTAL"
+  ],
+  "Complaint – Awaiting Response": [
+    "REQCOM"
+  ],
+  "Recommended Close to Client": [
+    "RECCLOSE",
+    "CTCRC",
+    "CLRECCL"
+  ],
+  "Client Escalation": [
+    "CTCE"
+  ],
+  "Offer Pending with Client": [
+    "CTCOFF"
+  ],
+  "Negotiating with Financial Mentor": [
+    "FMNEG"
+  ],
+  "Insurance Claim Lodged": [
+    "INSCLAIM"
+  ],
+  "Insurance Details Pending": [
+    "INSPEN"
+  ],
+  "Overpayment / Refund Required": [
+    "REFUND",
+    "REVERSAL"
+  ],
+  "Quarantine": [
+    "QUAR"
+  ],
+  "No Further Contact – Exhausted": [
+    "EXHAUSTED"
+  ],
+  "Remediation": [
+    "REMEDIATION"
+  ],
+  "Recommended Write-off – Bankrupt": [
+    "PENDBANK"
+  ],
+  "Recommended Write-off – Deceased": [
+    "PENDDEC"
+  ],
+  "Recommended Write-off – No Response": [
+    "PENDNR"
+  ],
+  "Load Error / Review": [
+    "ERROR",
+    "LOADREVIEW"
+  ],
+  "Customer Incarcerated": [
+    "INCARC"
+  ],
+  "Pre-Legal Review": [
+    "PRELEG",
+    "REVIEWL"
+  ],
+  "Referred for Legal Action": [
+    "LEGAL (all 3 duplicate entries)"
+  ],
+  "Legal Hold": [
+    "LEGHOLD",
+    "LEGALHOLD"
+  ],
+  "Legal Instalment": [
+    "LEGINST"
+  ],
+  "Statement of Claim Prepared": [
+    "SLCP"
+  ],
+  "Statement of Claim Issued": [
+    "SLCI"
+  ],
+  "Statement of Claim Sent for Service": [
+    "SLCSS"
+  ],
+  "Statement of Claim Served": [
+    "SLCS"
+  ],
+  "Complaint Defended": [
+    "COMPD"
+  ],
+  "File Defended": [
+    "DEF",
+    "DEFEN"
+  ],
+  "Default Judgment Entered": [
+    "JUD"
+  ],
+  "Judgment": [
+    "JUDG (both duplicate entries)"
+  ],
+  "Judgment Letter Sent": [
+    "JMTLTR",
+    "JUDL"
+  ],
+  "Application for Judgment": [
+    "APPJ"
+  ],
+  "Application for Order": [
+    "APPORD"
+  ],
+  "Examination Order Prepared": [
+    "EXAMORDP",
+    "EXAMP"
+  ],
+  "Examination Order Filed": [
+    "EXAMORDF"
+  ],
+  "Examination Order Sent for Service": [
+    "EXAMORDSS"
+  ],
+  "Examination Order Served": [
+    "EXAMORDS"
+  ],
+  "Summons for Oral Examination Issued": [
+    "SOEI",
+    "EXAM"
+  ],
+  "Summons for Oral Examination Sent for Service": [
+    "SOESSRV"
+  ],
+  "Summons for Oral Examination Served & Filed": [
+    "SOEF",
+    "EXAMS"
+  ],
+  "Summons for Oral Examination Adjourned": [
+    "SOEADJ"
+  ],
+  "Summons for Oral Examination Unserved": [
+    "SOEUNSRV",
+    "EXAMU"
+  ],
+  "Examination Conducted": [
+    "SOEC"
+  ],
+  "Enforcement Hearing Summons Issued": [
+    "EHSI",
+    "EHS"
+  ],
+  "Enforcement Hearing Summons Requested": [
+    "EHSR"
+  ],
+  "Enforcement – Unserved": [
+    "ENUNSERVED"
+  ],
+  "Garnishee Motion Prepared": [
+    "GARNP"
+  ],
+  "Garnishee Motion Sent for Service": [
+    "GARNS"
+  ],
+  "Warrant Out for Execution": [
+    "WARRANTOUTEX"
+  ],
+  "Wind-Up Application": [
+    "WIND",
+    "WUP",
+    "WINDUP"
+  ],
+  "Debt Repayment Order": [
+    "SIO"
+  ],
+  "Substituted Service": [
+    "SUBSER"
+  ],
+  "Service Attempt Failed": [
+    "SERVFAIL"
+  ],
+  "Unserved": [
+    "UNSERVED"
+  ],
+  "Referred to External Solicitor": [
+    "BBW"
+  ],
+  "Fixed Price Legal Referral": [
+    "FPL"
+  ],
+  "Promise to Pay – Full": [
+    "PTP",
+    "PTPCPP",
+    "PTPC",
+    "PTPDPP",
+    "PTPD"
+  ],
+  "Part Payment": [
+    "PTPP"
+  ],
+  "Promise to Pay – Broken": [
+    "PTPB"
+  ],
+  "Payment in Full": [
+    "PIF"
+  ],
+  "Settled for Less": [
+    "PTPS"
+  ],
+  "Possible Legal – File Loaded": [
+    "POSSLEG"
+  ],
+  "Recommend Legal Action": [
+    "RECLEG",
+    "RECLEGAL"
+  ],
+  "Pre-Legal – Insurer Not Paying": [
+    "PLEGINP"
+  ],
+  "Pre-Legal Demand Letter Sent": [
+    "MBPRELEG"
+  ],
+  "Written Off": [
+    "CLOSED",
+    "W/OFF",
+    "DUPCLAIM",
+    "DUPLICATE",
+    "UNEC"
+  ],
+  "Withdrawn by Client": [
+    "W/DRAWN",
+    "WDC"
+  ]
+}
