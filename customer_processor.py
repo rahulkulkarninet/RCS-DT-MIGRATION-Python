@@ -19,6 +19,12 @@ from services.workflows.customer_bank_transaction_method_workflow_service import
 from services.workflows.customer_closure_reason_workflow_service import (
     CustomerClosureReasonWorkflowService,
 )
+from services.workflows.customer_complainant_workflow_service import (
+    CustomerComplainantWorkflowService,
+)
+from services.workflows.customer_complaint_root_workflow_service import (
+    CustomerComplaintRootWorkflowService,
+)
 from services.workflows.customer_sql_workflow_service import CustomerSQLWorkflowService
 from services.workflows.customer_status_workflow_service import CustomerStatusWorkflowService
 from services.workflows.customer_staging_workflow_service import CustomerStagingWorkflowService
@@ -32,6 +38,10 @@ from result_types import (
     ClosureReasonUpdateResult,
     BankTransactionMethodCheckResult,
     BankTransactionMethodUpdateResult,
+    ComplainantCheckResult,
+    ComplainantUpdateResult,
+    ComplaintRootCheckResult,
+    ComplaintRootUpdateResult,
     MixedExecutionResult,
     StatusCheckResult,
     StatusUpdateResult,
@@ -39,6 +49,8 @@ from result_types import (
 from arrangement_type_service import ArrangementTypeService
 from bank_transaction_method_service import BankTransactionMethodService
 from closure_reason_service import ClosureReasonService
+from complainant_service import ComplainantService
+from complaint_root_service import ComplaintRootService
 from status_service import StatusService
 from config_parser import ConfigParser
 from interaction import ApprovalPolicy, GATE_SQL, GATE_STAGING
@@ -72,6 +84,8 @@ class CustomerProcessor:
         self.bank_transaction_method_service: Optional[BankTransactionMethodService] = None
         self.arrangement_type_service: Optional[ArrangementTypeService] = None
         self.closure_reason_service: Optional[ClosureReasonService] = None
+        self.complainant_service: Optional[ComplainantService] = None
+        self.complaint_root_service: Optional[ComplaintRootService] = None
         self.migration_execution_service = MigrationExecutionService()
         self.migration_setup_service = MigrationSetupService()
         self.customer_io_service = CustomerIOService()
@@ -87,6 +101,8 @@ class CustomerProcessor:
         self.customer_closure_reason_workflow_service = (
             CustomerClosureReasonWorkflowService()
         )
+        self.customer_complainant_workflow_service = CustomerComplainantWorkflowService()
+        self.customer_complaint_root_workflow_service = CustomerComplaintRootWorkflowService()
         self.customer_staging_workflow_service = CustomerStagingWorkflowService()
         self.customer_lifecycle_service = CustomerLifecycleService()
         self.customer_summary_service = CustomerSummaryService()
@@ -740,6 +756,133 @@ class CustomerProcessor:
 
     def _get_invalid_closure_reasons_from_db(self) -> List[str]:
         return self.customer_closure_reason_workflow_service.get_invalid_closure_reasons_from_db(self)
+
+    def update_complainants(
+        self,
+        customer_logger: logging.Logger,
+    ) -> ComplainantUpdateResult:
+        """
+        Replace RC_COMPLAINT_EXTRACT.CMP_Source codes with standardized
+        tblComplainant labels using variables/complainant_codes.json, sweeping
+        unmapped values to the configured fallback label. NULL/blank are left as-is.
+        """
+        return self.customer_complainant_workflow_service.update_complainants(
+            self,
+            customer_logger,
+        )
+
+    def _check_complainants_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        complainant_update_result: Optional[ComplainantUpdateResult] = None,
+    ) -> ComplainantCheckResult:
+        """Check complainant sources and report defaulted and unmapped values."""
+        return self.customer_complainant_workflow_service.check_complainants_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            complainant_update_result,
+        )
+
+    def _load_complainant_mapping_frame(
+        self,
+        complainant_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_complainant_workflow_service.load_complainant_mapping_frame(
+            self,
+            complainant_mapping,
+        )
+
+    def _resolve_complainant_fallback_label(self, fallback_label: Optional[str]) -> Optional[str]:
+        return self.customer_complainant_workflow_service.resolve_fallback_label(
+            self,
+            fallback_label,
+        )
+
+    def _build_complainant_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_complainant_workflow_service.build_complainant_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_complainants(
+        self,
+        resolution_frame: pd.DataFrame,
+        fallback_label: Optional[str] = None,
+    ) -> Tuple[int, int]:
+        return self.customer_complainant_workflow_service.bulk_update_complainants(
+            self,
+            resolution_frame,
+            fallback_label,
+        )
+
+    def _get_invalid_complainants_from_db(self) -> List[str]:
+        return self.customer_complainant_workflow_service.get_invalid_complainants_from_db(self)
+
+    def update_complaint_roots(
+        self,
+        customer_logger: logging.Logger,
+    ) -> ComplaintRootUpdateResult:
+        """
+        Replace RC_COMPLAINT_EXTRACT.CMP_Issue_1/2/3 codes with standardized
+        tblComplaintRoot labels using variables/complaint_root_codes.json.
+        """
+        return self.customer_complaint_root_workflow_service.update_complaint_roots(
+            self,
+            customer_logger,
+        )
+
+    def _check_complaint_roots_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        root_update_result: Optional[ComplaintRootUpdateResult] = None,
+    ) -> ComplaintRootCheckResult:
+        """Check complaint issue values and report unmapped values."""
+        return self.customer_complaint_root_workflow_service.check_complaint_roots_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            root_update_result,
+        )
+
+    def _load_complaint_root_mapping_frame(
+        self,
+        root_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_complaint_root_workflow_service.load_complaint_root_mapping_frame(
+            self,
+            root_mapping,
+        )
+
+    def _build_complaint_root_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_complaint_root_workflow_service.build_complaint_root_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_complaint_roots(
+        self,
+        resolution_frame: pd.DataFrame,
+    ) -> Dict[str, int]:
+        return self.customer_complaint_root_workflow_service.bulk_update_complaint_roots(
+            self,
+            resolution_frame,
+        )
+
+    def _get_invalid_complaint_roots_from_db(self) -> List[str]:
+        return self.customer_complaint_root_workflow_service.get_invalid_complaint_roots_from_db(self)
 
 
         

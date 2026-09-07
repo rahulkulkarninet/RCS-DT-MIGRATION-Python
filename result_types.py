@@ -79,6 +79,46 @@ class ClosureReasonCheckResult(TypedDict):
     invalid_reasons: List[str]
 
 
+class ComplainantUpdateResult(TypedDict, total=False):
+    success: bool
+    mapping_file: str
+    fallback_label: str
+    fallback_applied: bool
+    total_codes_loaded: int
+    duplicate_codes_skipped: int
+    resolved_complainants: int
+    rows_updated: int
+    rows_defaulted: int
+    defaulted_values: List[str]
+    invalid_complainants: List[str]
+    status_message: str
+    error: str
+
+
+class ComplainantCheckResult(TypedDict):
+    status_message: str
+    defaulted_values: List[str]
+    invalid_complainants: List[str]
+
+
+class ComplaintRootUpdateResult(TypedDict, total=False):
+    success: bool
+    mapping_file: str
+    total_codes_loaded: int
+    duplicate_codes_skipped: int
+    resolved_roots: int
+    rows_updated: int
+    rows_updated_by_column: Dict[str, int]
+    invalid_roots: List[str]
+    status_message: str
+    error: str
+
+
+class ComplaintRootCheckResult(TypedDict):
+    status_message: str
+    invalid_roots: List[str]
+
+
 class MethodBreakdown(TypedDict):
     files: int
     success: int

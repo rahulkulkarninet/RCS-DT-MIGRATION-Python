@@ -165,13 +165,89 @@ class CustomerSQLWorkflowService:
                 f"{closure_reason_update_result.get('rows_defaulted', 0)}")
             customer_logger.info(f"{'='*50}")
 
+            complainant_update_result = processor.update_complainants(customer_logger)
+            if not complainant_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'complainant_update_failed',
+                    complainant_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                failure_result['bank_transaction_method_check'] = bank_method_check_result
+                failure_result['arrangement_type_update'] = arrangement_type_update_result
+                failure_result['arrangement_type_check'] = arrangement_type_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                failure_result['closure_reason_check'] = closure_reason_check_result
+                failure_result['complainant_update'] = complainant_update_result
+                return failure_result
+
+            complainant_check_result = processor._check_complainants_step(
+                customer_code,
+                db,
+                customer_logger,
+                complainant_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'COMPLAINANT CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {complainant_check_result.get('status_message', 'N/A')}")
+            invalid_complainants = complainant_check_result.get('invalid_complainants', []) or []
+            customer_logger.info(f'Invalid complainant sources found: {len(invalid_complainants)}')
+            if invalid_complainants:
+                customer_logger.warning(f'Invalid complainant sources: {invalid_complainants}')
+            customer_logger.info(f"{'='*50}")
+
+            complaint_root_update_result = processor.update_complaint_roots(customer_logger)
+            if not complaint_root_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'complaint_root_update_failed',
+                    complaint_root_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['bank_transaction_method_update'] = bank_method_update_result
+                failure_result['bank_transaction_method_check'] = bank_method_check_result
+                failure_result['arrangement_type_update'] = arrangement_type_update_result
+                failure_result['arrangement_type_check'] = arrangement_type_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                failure_result['closure_reason_check'] = closure_reason_check_result
+                failure_result['complainant_update'] = complainant_update_result
+                failure_result['complainant_check'] = complainant_check_result
+                failure_result['complaint_root_update'] = complaint_root_update_result
+                return failure_result
+
+            complaint_root_check_result = processor._check_complaint_roots_step(
+                customer_code,
+                db,
+                customer_logger,
+                complaint_root_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'COMPLAINT ROOT CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {complaint_root_check_result.get('status_message', 'N/A')}")
+            invalid_roots = complaint_root_check_result.get('invalid_roots', []) or []
+            customer_logger.info(f'Invalid complaint issue values found: {len(invalid_roots)}')
+            if invalid_roots:
+                customer_logger.warning(f'Invalid complaint issue values: {invalid_roots}')
+            customer_logger.info(f"{'='*50}")
+
             pending_moves = getattr(processor, 'pending_file_moves', []) or []
             pending_file_count = sum(len(entry['files']) for entry in pending_moves)
             customer_logger.info(f'Files awaiting move (nothing moved yet): {pending_file_count}')
 
             if not processor.approval_policy.confirm(
-                    'Continue after status, payment method, arrangement type and '
-                    'closure reason checks?',
+                    'Continue after status, payment method, arrangement type, '
+                    'closure reason, complainant and complaint root checks?',
                     GATE_SQL):
                 customer_logger.info(
                     'Not approved after status check; stopping customer. '
@@ -191,6 +267,10 @@ class CustomerSQLWorkflowService:
                 failure_result['arrangement_type_check'] = arrangement_type_check_result
                 failure_result['closure_reason_update'] = closure_reason_update_result
                 failure_result['closure_reason_check'] = closure_reason_check_result
+                failure_result['complainant_update'] = complainant_update_result
+                failure_result['complainant_check'] = complainant_check_result
+                failure_result['complaint_root_update'] = complaint_root_update_result
+                failure_result['complaint_root_check'] = complaint_root_check_result
                 return failure_result
 
             # All three mapping checks are confirmed; only now do the staged files move
@@ -245,6 +325,10 @@ class CustomerSQLWorkflowService:
             final_result['arrangement_type_check'] = arrangement_type_check_result
             final_result['closure_reason_update'] = closure_reason_update_result
             final_result['closure_reason_check'] = closure_reason_check_result
+            final_result['complainant_update'] = complainant_update_result
+            final_result['complainant_check'] = complainant_check_result
+            final_result['complaint_root_update'] = complaint_root_update_result
+            final_result['complaint_root_check'] = complaint_root_check_result
             final_result['files_moved'] = file_move_summary
             return final_result
 

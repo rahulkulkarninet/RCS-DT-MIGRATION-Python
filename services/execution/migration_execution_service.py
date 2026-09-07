@@ -31,17 +31,17 @@ class MigrationExecutionService:
             for key, file_info in sql_files.items():
                 sequence = file_info.get('sequence', 0)
 
-                if 1 <= sequence <= 75:
-                    pyodbc_files[key] = file_info
-                elif sequence == 76:
+                if sequence == 76:
                     sqlcmd_files[key] = file_info
+                elif sequence >= 1:
+                    pyodbc_files[key] = file_info
                 else:
                     customer_logger.warning(
-                        f"File sequence {sequence} outside expected range (1-76): {file_info.get('filename', 'unknown')}"
+                        f"File sequence {sequence} is not a valid positive sequence: {file_info.get('filename', 'unknown')}"
                     )
 
             customer_logger.info(
-                f"Split files: {len(pyodbc_files)} for PyODBC (1-75), {len(sqlcmd_files)} for SQLCMD (76)"
+                f"Split files: {len(pyodbc_files)} for PyODBC, {len(sqlcmd_files)} for SQLCMD (76)"
             )
 
             combined_results = {
