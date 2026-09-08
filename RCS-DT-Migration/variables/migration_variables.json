@@ -1,0 +1,278 @@
+{
+    "migration_variables":{
+        "vwHost": {
+            "query_details": {
+                "main_table": "vwHost",
+                "join_type": "INNER JOIN",
+                "join_table": "vwHost2",
+                "join_condition": "vwHost.HostID = vwHost2.HostID",
+                "query_template": "SELECT ISNULL({column}, {default}) AS {column} FROM {main_table} {join_type} {join_table} ON {join_condition}"
+            },
+            "variables": {
+                "AccountStatusID_Creation": {
+                    "column": "AccountStatusID_Creation",
+                    "default": 1,
+                    "data_type": "int"
+                },
+                "ContactDetailTypeID_Home": {
+                    "column": "ContactDetailTypeID_HomePhone",
+                    "default": 1,
+                    "data_type": "int"
+                },
+                "ContactDetailTypeID_Mobile": {
+                    "column": "ContactDetailTypeID_MobilePhone",
+                    "default": 2,
+                    "data_type": "int"
+                },
+                "ContactDetailTypeID_Email": {
+                    "column": "ContactDetailTypeID_DefaultEmail",
+                    "default": 4,
+                    "data_type": "int"
+                },
+                "AddressTypeID_Home": {
+                    "column": "AddressTypeID_Home",
+                    "default": 1,
+                    "data_type": "int"
+                },
+                "AddressTypeID_Mail": {
+                    "column": "AddressTypeID_Mail",
+                    "default": 3,
+                    "data_type": "int"
+                },
+                "BankAccountID_DefaultHost": {
+                    "column": "BankAccountID_DefaultHost",
+                    "default": 95,
+                    "data_type": "int"
+                },
+                "DefaultCountryID": {
+                    "column": "DefaultCountryID",
+                    "default": 1,
+                    "data_type": "int"
+                },
+                "ContactTypeID_3PDM": {
+                    "column": "ContactTypeID_3PDM",
+                    "default": 5,
+                    "data_type": "int"
+                },
+                "RelationshipID_3PDM": {
+                    "column": "RelationshipID_3PDM",
+                    "default": 11,
+                    "data_type": "int"
+                },
+                "RelationshipID_Witness": {
+                    "column": "RelationshipID_Witness",
+                    "default": 17,
+                    "data_type": "int"
+                },
+                "ContactDetailTypeID_Work": {
+                    "column": "ContactDetailTypeID_WorkPhone",
+                    "default": 1,
+                    "data_type": "int"
+                }
+            }
+        },
+        "lookup_variables": {
+            "query_details": {
+                "query_template": "SELECT ISNULL({column}, {default}) AS {column} FROM {main_table} WHERE {filter_col} = '{filter_value}'"
+            },
+            "variables": {
+                "AddressTypeID_Legal": {
+                    "main_table": "tblAddressType",
+                    "column": "AddressTypeID",
+                    "default": null,
+                    "filter_col": "AddressType",
+                    "filter_value": "Legal",
+                    "data_type": "int"
+                },
+                "EntryTypeID_Treatment": {
+                    "main_table": "tblEntryType",
+                    "column": "EntryTypeID",
+                    "default": -1,
+                    "filter_col": "EntryType",
+                    "filter_value": "Treatment",
+                    "data_type": "int"
+                },
+                "EntryTypeID_Result": {
+                    "main_table": "tblEntryType",
+                    "column": "EntryTypeID",
+                    "default": -1,
+                    "filter_col": "EntryType",
+                    "filter_value": "Result",
+                    "data_type": "int"
+                },
+                "ArrangementTypeID_Deal": {
+                    "main_table": "tblArrangementType",
+                    "column": "ArrangementTypeID",
+                    "default": 0,
+                    "filter_col": "ArrangementType",
+                    "filter_value": "Deal",
+                    "data_type": "int"
+                },
+                "BankTransactionMethodID_DirectPayment": {
+                    "main_table": "tblBankTransactionMethod",
+                    "column": "BankTransactionMethodID",
+                    "default": null,
+                    "filter_col": "BankTransactionMethod",
+                    "filter_value": "Direct Payment",
+                    "data_type": "int"
+                }
+            }
+        },
+        "metafield_variables": {
+            "query_details": {
+                "main_table": "tblMetaField_AccountSpecificsGroup",
+                "query_template": "SELECT {column} FROM {main_table} WHERE {filter_col} = '{filter_value}' AND {sec_col} = {sec_value}",
+                "column": "MetaField_AccountSpecificsGroupID",
+                "filter_col": "MetaField_AccountSpecificsGroup",
+                "sec_col": "StatusID",
+                "sec_value": 1
+            },
+            "variables": {
+                "DebtReferenceNumbers": {
+                    "filter_value": "DebtReferenceNumbers",
+                    "data_type": "int"
+                },
+                "DrDebtInfo": {
+                    "filter_value": "DrDebtInfo",
+                    "data_type": "int"
+                },
+                "MIMO": {
+                    "filter_value": "MIMO",
+                    "data_type": "int"
+                },
+                "MTTP": {
+                    "filter_value": "MTTP",
+                    "data_type": "int"
+                },
+                "INOU": {
+                    "filter_value": "INOU",
+                    "data_type": "int"
+                },
+                "LEAK": {
+                    "filter_value": "LEAK",
+                    "data_type": "int"
+                },
+                "NEWA": {
+                    "filter_value": "NEWA",
+                    "data_type": "int"
+                },
+                "EOCH": {
+                    "filter_value": "EOCH",
+                    "data_type": "int"
+                },
+                "COPY": {
+                    "filter_value": "COPY",
+                    "data_type": "int"
+                },
+                "METQ": {
+                    "filter_value": "METQ",
+                    "data_type": "int"
+                },
+                "MISS": {
+                    "filter_value": "MISS",
+                    "data_type": "int"
+                },
+                "DLO": {
+                    "filter_value": "DLO",
+                    "data_type": "int"
+                },
+                "BILL": {
+                    "filter_value": "BILL",
+                    "data_type": "int"
+                }
+            }
+        },
+        "constant_variables": {
+            "variables": {
+                "ClosedAccountRetentionMonths": {
+                    "default": 13,
+                    "data_type": "int"
+                },
+                "RecentPaymentMonths": {
+                    "default": 6,
+                    "data_type": "int"
+                },
+                "RelationshipID_Guarantor": {
+                    "default": 19,
+                    "data_type": "int"
+                },
+                "RelationshipID_Spouse": {
+                    "default": 2,
+                    "data_type": "int"
+                },
+                "RelationshipID_Reference": {
+                    "default": 20,
+                    "data_type": "int"
+                },
+                "RelationshipID_Solicitor": {
+                    "default": 6,
+                    "data_type": "int"
+                },
+                "RelationshipID_AdditionalCardHolder": {
+                    "default": 21,
+                    "data_type": "int"
+                },
+                "RelationshipID_Other": {
+                    "default": 22,
+                    "data_type": "int"
+                },
+                "ContactTypeID_Individual": {
+                    "default": 4,
+                    "data_type": "int"
+                },
+                "ContactTypeID_Entity": {
+                    "default": 3,
+                    "data_type": "int"
+                },
+                "ContactTypeID_Insured": {
+                    "default": 21,
+                    "data_type": "int"
+                },
+                "ContactTypeID_InsuredRep": {
+                    "default": 16,
+                    "data_type": "int"
+                },
+                "ContactTypeID_InsuredDriver": {
+                    "default": 17,
+                    "data_type": "int"
+                },
+                "ContactTypeID_ThirdPartyDriver": {
+                    "default": 18,
+                    "data_type": "int"
+                },
+                "ContactTypeID_ThirdPartyOwner": {
+                    "default": 19,
+                    "data_type": "int"
+                },
+                "ContactTypeID_ThirdPartyInsurer": {
+                    "default": 20,
+                    "data_type": "int"
+                },
+                "RelationshipID_Insured": {
+                    "default": 41,
+                    "data_type": "int"
+                },
+                "RelationshipID_InsuredRep": {
+                    "default": 36,
+                    "data_type": "int"
+                },
+                "RelationshipID_InsuredDriver": {
+                    "default": 37,
+                    "data_type": "int"
+                },
+                "RelationshipID_ThirdPartyDriver": {
+                    "default": 38,
+                    "data_type": "int"
+                },
+                "RelationshipID_ThirdPartyOwner": {
+                    "default": 39,
+                    "data_type": "int"
+                },
+                "RelationshipID_ThirdPartyInsurer": {
+                    "default": 40,
+                    "data_type": "int"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,5 @@
+{
+  "Direct Debit": ["DD"],
+  "BPAY": ["BPAY"],
+  "Credit Card / Debit Card": ["Credit Card","Apple Pay","EZ"]
+}

@@ -1,0 +1,90 @@
+{
+    "RC_ACCOUNT_EXTRACT" :{
+        "base_config":{
+            "table": "RC_ACCOUNT_EXTRACT"
+        },
+        "metrics":[
+            {
+                "type": "sum",
+                "column": "debit_amts",
+                "description": "Total Debit Amounts",
+                "result_column": "total_debt"
+            },
+            {
+                "type": "sum",
+                "column": "paid_amts",
+                "description": "Total Paid Amounts",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "comm_amt",
+                "description": "Total Commission Amounts",
+                "result_column": "total_commission"
+            }
+
+        ]   
+     },
+     "RC_DRDBINVOICE" :{
+        "base_config":{
+            "table": "RC_DRDBINVOICE"
+        },
+        "metrics":[
+            {
+                "type": "sum",
+                "column": "invoice_amount",
+                "description": "Total Debit Amounts",
+                "result_column": "total_debt"
+            },
+            {
+                "type": "sum",
+                "column": "invoice_costs",
+                "description": "Total Costs",
+                "result_column": "total_costs"
+            },
+            {
+                "type": "sum",
+                "column": "total_paid_amount",
+                "description": "Total Paid Amounts",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "outstanding",
+                "description": "Total Outstanding Amounts",
+                "result_column": "total_outstanding"
+            }
+        ]
+     },
+     "RC_PAYMENTS" :{
+        "base_config":{
+            "table": "RC_PAYMENTS"
+        },
+        "metrics":[
+            {
+                "type": "sum",
+                "column": "allocatedoverpayment",
+                "description": "Total overpayment Amounts",
+                "result_column": "total_overpayments"
+            },
+            {
+                "type": "sum",
+                "column": "allocatedcost",
+                "description": "Total Costs",
+                "result_column": "total_costs"
+            },
+            {
+                "type": "sum",
+                "column": "allocatedprincipal",
+                "description": "Total Paid Amounts",
+                "result_column": "total_paid"
+            },
+            {
+                "type": "sum",
+                "column": "comm_amt",
+                "description": "Total Commission Amounts",
+                "result_column": "total_commission"
+            }
+        ]
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "default_for_unmapped": "Secondary Contact",
+  "mapping": {
+    "Guarantor": ["GTR"],
+    "Additional Card Holder": ["ACH"],
+    "Spouse": ["SPO"],
+    "Reference": ["REF"],
+    "Solicitor": ["SOL"],
+    "Witness": ["WIT"]
+  }
+}

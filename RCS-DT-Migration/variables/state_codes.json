@@ -1,0 +1,11 @@
+{
+  "_comment": "Maps free-text state values that 44.tbladdress_Assign_StateID.sql could not match onto the canonical tblState.StateShort code. Keys must exist in tblState.StateShort. Matching ignores case, whitespace and punctuation, so 'N.S.W.', 'N S W' and 'nsw' already resolve without an entry - only genuinely different words need listing here.",
+  "NSW": ["NEW SOUTH WALES"],
+  "VIC": ["VICTORIA"],
+  "QLD": ["QUEENSLAND"],
+  "SA": ["SOUTH AUSTRALIA", "STH AUSTRALIA", "S AUST"],
+  "WA": ["WESTERN AUSTRALIA", "WEST AUSTRALIA", "W AUST"],
+  "TAS": ["TASMANIA"],
+  "NT": ["NORTHERN TERRITORY", "NTHN TERRITORY"],
+  "ACT": ["AUSTRALIAN CAPITAL TERRITORY"]
+}
