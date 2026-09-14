@@ -16,7 +16,7 @@ class MigrationExecutionService:
     ) -> MixedExecutionResult:
         """
         Internal method to execute SQL files using mixed methods.
-        Files 1-75: PyODBC with transaction control.
+        Files 1-75, 77+: PyODBC with transaction control.
         File 76: SQLCMD for compatibility.
         """
 
@@ -31,17 +31,17 @@ class MigrationExecutionService:
             for key, file_info in sql_files.items():
                 sequence = file_info.get('sequence', 0)
 
-                if 1 <= sequence <= 75:
-                    pyodbc_files[key] = file_info
-                elif sequence == 76:
+                if sequence == 76:
                     sqlcmd_files[key] = file_info
+                elif sequence >= 1:
+                    pyodbc_files[key] = file_info
                 else:
                     customer_logger.warning(
-                        f"File sequence {sequence} outside expected range (1-76): {file_info.get('filename', 'unknown')}"
+                        f"File sequence {sequence} is not a valid positive sequence: {file_info.get('filename', 'unknown')}"
                     )
 
             customer_logger.info(
-                f"Split files: {len(pyodbc_files)} for PyODBC (1-75), {len(sqlcmd_files)} for SQLCMD (76)"
+                f"Split files: {len(pyodbc_files)} for PyODBC, {len(sqlcmd_files)} for SQLCMD (76)"
             )
 
             combined_results = {
@@ -77,9 +77,14 @@ class MigrationExecutionService:
                     else:
                         combined_results['method_breakdown']['pyodbc']['failed'] += 1
 
-                # Check if PyODBC phase succeeded.
+                # Check if PyODBC phase succeeded. A file that was skipped because a
+                # prior --resume-load-id run already committed it is just as
+                # successful as one executed in this run - only a file that neither
+                # executed nor was skipped (or that errored outright) counts as a
+                # real failure.
                 pyodbc_success = all(
-                    r.get('executed', False) and not r.get('error') for r in pyodbc_results.values()
+                    (r.get('executed', False) or r.get('skipped', False)) and not r.get('error')
+                    for r in pyodbc_results.values()
                 )
 
                 if not pyodbc_success:
@@ -87,7 +92,7 @@ class MigrationExecutionService:
                     failed_pyodbc = [
                         f"Seq {r.get('sequence', '?')}: {r.get('table_name', 'unknown')}"
                         for r in pyodbc_results.values()
-                        if r.get('error') or not r.get('executed', False)
+                        if r.get('error') or not (r.get('executed', False) or r.get('skipped', False))
                     ]
                     customer_logger.error(f"Failed PyODBC files: {failed_pyodbc}")
 

@@ -46,6 +46,7 @@ CREATE TABLE [dbo].[RC_COMPLAINT_EXTRACT](
 	[CMP_Status] [nvarchar](100) NULL,
 	[CMP_Status_Date] [datetime] NULL,
 	[CMP_Info_Requested] [nvarchar](100) NULL,
+	[Unused_Col34] [nvarchar](100) NULL,
 	[CMP_Info_Sent_Date] [datetime] NULL,
 	[CMP_Client_Email_Sent] [nvarchar](100) NULL,
 	[CMP_Entity] [nvarchar](100) NULL,
