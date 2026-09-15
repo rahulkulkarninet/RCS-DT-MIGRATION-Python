@@ -542,7 +542,7 @@ class StagingProcessor:
         try:
             # First attempt with 'warn' - shows problematic lines but continues
             frame = pd.read_csv(
-                path, sep=',', usecols=cols, index_col=False, names=cols,
+                path, sep=',', usecols=cols, index_col=False,
                 header=0, encoding=encoding,
                 on_bad_lines='warn',  # Keep 'warn' for transparency
                 dtype=str,
@@ -559,7 +559,7 @@ class StagingProcessor:
                 try:
                     # Recovery attempt with 'warn' + more forgiving settings
                     frame = pd.read_csv(
-                        path, sep=',', usecols=cols, index_col=False, names=cols,
+                        path, sep=',', usecols=cols, index_col=False,
                         header=0, encoding=encoding,
                         on_bad_lines='warn',  # Still warn about issues
                         dtype=str,
@@ -584,7 +584,7 @@ class StagingProcessor:
                         # Final attempt. Bad lines are captured rather than
                         # skipped, so nothing disappears without being counted.
                         frame = pd.read_csv(
-                            path, sep=',', usecols=cols, index_col=False, names=cols,
+                            path, sep=',', usecols=cols, index_col=False,
                             header=0, encoding=encoding,
                             on_bad_lines=capture_bad_line,
                             dtype=str,
@@ -974,7 +974,7 @@ class StagingProcessor:
             bad_lines.append(line)
             return None
 
-        base = dict(sep=',', usecols=cols, index_col=False, names=cols, header=0,
+        base = dict(sep=',', usecols=cols, index_col=False, header=0,
                     encoding=encoding, dtype=str, chunksize=chunk_rows,
                     **na_read_options())
         tiers = (
