@@ -1,0 +1,88 @@
+
+  "default_set": "staging",
+
+  "protected_tables": {
+    "RC_Processing_Stats": "Append-only run history. Add columns with Migrations/001, never by rerunning the schema file.",
+    "RC_Entity_Mapping": "Client -> entity mapping, maintained by hand. Dropping it unmaps every client.",
+    "RC_PaymentMethod_Mapping": "RCS payment method -> DT method mapping. The file reseeds its rows, but any local edit is lost."
+  },
+
+  "drop_scope": {
+    "_comment": [
+      "The ONLY tables tools/setup_archive.py may ever drop. Default deny: a",
+      "table that does not match here is never a candidate, under any flag, and",
+      "is never even enumerated. This matters because the migration's database",
+      "is also the DebtRak application database - a tool that dropped 'anything",
+      "not listed in this file' would take the application with it. Widening",
+      "this is a code review, not a runtime option.",
+      "",
+      "dbo_prefixes  name prefixes in dbo that the migration owns.",
+      "schemas       whole schemas the migration owns outright.",
+      "max_drops     refuse the run outright if more than this many tables come",
+      "              out droppable. A correct run clears a handful of strays; a",
+      "              list of 200 means the expected set failed to load, and",
+      "              stopping beats proceeding carefully."
+    ],
+    "dbo_prefixes": ["RC_"],
+    "schemas": ["archive"],
+    "max_drops": 40
+  },
+
+  "sets": {
+    "staging": {
+      "description": "Every staging table a migration run needs before it starts - the table_keywords extracts plus the two derived tables process_staging.ADDITIONAL_REQUIRED_TABLES checks for. Each file drops and recreates its table; staging is truncated per customer anyway, so losing what it holds costs nothing once the customer's rows are archived.",
+      "files": [
+        "RC_ACCOUNT_EXTRACT Schema.sql",
+        "RC_ARRANGEMENT Schema.sql",
+        "RC_COMPLAINT_EXTRACT Schema.sql",
+        "RC_COSTS_EXTRACT Schema.sql",
+        "RC_DEAL Schema.sql",
+        "RC_DEBTOR Schema.sql",
+        "RC_DEBT_CONTACTS Schema.sql",
+        "RC_DOCHIST_EXTRACT Schema.sql",
+        "RC_DRDBINVOICE Schema.sql",
+        "RC_DRDEBTINFO Schema.sql",
+        "RC_DRDEBTORAUD Schema.sql",
+        "RC_DRINSURANCE.sql",
+        "RC_DRMEDINV Schema.sql",
+        "RC_DRPAYALLOCMA_EXTRACT Schema.sql",
+        "RC_EMAIL_EXTRACT Schema.sql",
+        "RC_HARDSHIP_EXTRACT Schema.sql",
+        "RC_NOTES_EXTRACT Schema.sql",
+        "RC_PAYMENTS Schema.sql",
+        "RC_POI Schema.sql",
+        "RC_RELATEDPARTY Schema.sql",
+        "RC_SMS Schema.sql",
+        "RC_STATEMENT Schema.sql",
+        "RC_TRANSACTION Schema.sql",
+        "RC_TREATMENT Schema.sql",
+        "RC_STAGING_COSTS Schema.sql",
+        "RC_STAGING_NOTES_ACCOUNT Schema.sql"
+      ]
+    },
+
+    "support": {
+      "description": "Mapping and history tables the migration reads or writes but never reloads. Every one of them is protected: run these only when standing an environment up for the first time.",
+      "files": [
+        "RC_Entity_Mapping Schema.sql",
+        "RC_PaymentMethod_Mapping Schema.sql",
+        "RC_Processing_Stats Schema.sql"
+      ]
+    },
+
+    "migrations": {
+      "description": "Additive, re-runnable changes to tables that already exist. Numbered, and run in that order. 004 is documentation only - the database tools/sweep_archive.py moves archived tables on to is created by hand - and 005 rebuilds tblEntry indexes, so neither is here. 006 is, because every environment that archives needs the archive schema before its first run.",
+      "files": [
+        "Migrations/001.RC_Processing_Stats_add_RunID.sql",
+        "Migrations/002.DT_Migration_SQLProgress.sql",
+        "Migrations/003.DT_Migration_LoopProgress.sql",
+        "Migrations/006.archive_schema.sql"
+      ]
+    },
+
+    "new-environment": {
+      "description": "Everything a fresh environment needs, in dependency order: the tables first, then the additive changes to them. That includes the archive schema (Migrations/006) the archive step renames into. The separate database the sweep moves those tables on to is not created here - see SQL/Schemas/Migrations/004 and tools/sweep_archive.py.",
+      "include": ["staging", "support", "migrations"]
+    }
+  }
+}

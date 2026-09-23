@@ -1,0 +1,16 @@
+db_col_name,csv_col_name
+Extended_Debt_Code,Extended_Debt_Code
+Client_Code,Client_Code
+Client_Group,Client_Group
+Document_Code,Document_Code
+Type,Type
+Queue_Date,Queue_Date
+Debtor_Code,Debtor_Code
+Doc_Hist_Code,Doc_Hist_Code
+Op_code,Op_code
+Email_Addr,Email_Addr
+Sent_Date,Sent_Date
+Fail_Date,Fail_Date
+Fail_Reas,Fail_Reas
+State,State
+ZID,ZID

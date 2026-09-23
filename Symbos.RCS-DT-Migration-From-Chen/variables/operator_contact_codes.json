@@ -1,0 +1,31 @@
+{
+  "_comment": "Legacy operator codes -> the DebtRak user a migrated row is attributed to. Same shape and same mechanism as account_status_codes.json: {tblContact.UserName: [legacy operator codes]}, matched ignoring case, whitespace and punctuation. operator_contact_service.py rewrites the operator columns of the extracts in place to the canonical username before the SQL batch runs, and files 01, 49, 58, 60, 64, 65 and 67 then read tblContact directly with OUTER APPLY (TOP 1, because UserName is not unique). Keys starting with an underscore are notes and are skipped, the way every domain file skips a non-list value. This replaces CSRC_OperatorContactMapping, a customer-specific table (CSRC = a customer code) that shared migration SQL joined by name, so a customer without it broke the batch at file 01. Nothing reads that table any more.",
+  "_comment_adding_codes": "An operator code needs an entry here ONLY when the code differs from the username. A code that is already a tblContact.UserName resolves on its own - 7 of the 564 codes in the extracts are (DENJ, SUZC, ABHB, KATX, RITB, STAM, MARC). A code that matches nothing is NOT an error either: the SQL ends every operator lookup with ISNULL(OM.ContactID, {{DefaultOperatorContactID}}), so its rows go to the fallback contact. The check step names every unresolved code it finds in the extracts, busiest first with row counts, so this file grows from what the customer's data actually contains rather than from a table someone maintained by hand. Add a code when the fallback is the wrong answer for it; leave it out when it is fine. On testse that leaves 557 codes and 3.26 million rows on the fallback, whose biggest members (DLR, APP, DL, REMOTE, EOD) are automation rather than people.",
+  "_comment_fallback": "The fallback is PRAM, set once in variables/migration_variables.json as the lookup_variable DefaultOperatorContactID (tblContact.UserName = 'PRAM' -> ContactID, 197 on testse, falling back to the configured default of 1 if that username is absent). It is deliberately NOT written down as an id anywhere, which is the whole point of removing CSRC_OperatorContactMapping. Note this puts the unresolved tail on PRAM where it previously went to admin - the same contact the old table pointed all 20 rows at. Change that one filter_value to send it somewhere else.",
+  "_comment_placeholder": "The 20 codes under PRAM are NOT a judgement that Prashant Mathur did this work - they are the pre-existing behaviour preserved. Every row of CSRC_OperatorContactMapping pointed at ContactID 197 (PRAM) whatever the operator code was, so leaving them there migrates exactly what today's migration migrates. They await business sign-off, the same way the 31 MERCANTILE cost codes do.",
+  "_comment_self_matching": "Eight of those codes are themselves exact tblContact.UserName values for different real people: AKSJ (Akshayaa Rajesh), AMRA (Amandeep Rana), MARC (Margaret Cilia), MURK (Muri Kingi), RUSW (Rusila Wakeham), SABS (Saba Shabbir), SHEL (Sheenal Lata) and SUZC (Suzanne Chhour). Giving each its own key here is almost certainly the intended mapping, but it CHANGES who the migrated accounts, payments, notes and letters are attributed to, so it is left for sign-off rather than applied. Three more are one character from a real UserName and are deliberately not matched, because a near miss is a guess: ABHV (vs ABHB, ABHW), ADIU (vs ADUI) and SRAV (vs SRAM). SEW, ANLA and BKGU match nothing at all.",
+  "_comment_system_codes": "AUTOLOAD, EDO, EOD, IVRU, REMOTE and SMS are automation rather than people - end-of-day runs, the IVR, the SMS gateway. They are listed because that is what the table did. Since the fallback is now PRAM too, listing them changes nothing today - they are kept so the decision stays recorded, and so they keep their attribution if the fallback is ever repointed. If sign-off decides machine-generated rows should carry a system contact, move them to that contact's UserName.",
+  "_comment_note_islands": "No longer a risk, and nothing to re-measure. Note islands used to be detected by 66.RC_STAGING_NOTES.sql, which ran AFTER this rewrite, so two codes collapsed onto one username could in principle weld two adjacent notes into one (measured on testse for the 20 below: 0 at-risk (debtor, timestamp) groups, with REMOTE at 303,712 note rows, EOD at 211,397 and SMS at 35,001 the members that would have mattered). Notes are now folded by notes_consolidation during the staging load, which runs BEFORE this rewrite, so islands break on the original codes and no collapse can reach them. The operator also survives only as display text in a note header now - 67 attributes a consolidated entry to DefaultOperatorContactID rather than resolving a contact per note - so adding codes here no longer affects tblEntry for notes at all. It still affects 01, 49, 58, 60, 64 and 65.",
+  "PRAM": [
+    "ABHV",
+    "ADIU",
+    "AKSJ",
+    "AMRA",
+    "ANLA",
+    "AUTOLOAD",
+    "BKGU",
+    "EDO",
+    "EOD",
+    "IVRU",
+    "MARC",
+    "MURK",
+    "REMOTE",
+    "RUSW",
+    "SABS",
+    "SEW",
+    "SHEL",
+    "SMS",
+    "SRAV",
+    "SUZC"
+  ]
+}

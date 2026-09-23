@@ -1,0 +1,10 @@
+{
+  "_comment": "Rules are evaluated IN ORDER against RC_ACCOUNT_EXTRACT.Cause_Description; the first whose 'contains' text appears in the description wins. This reproduces the precedence of the CASE WHEN ... LIKE chain that used to live in 45.tblaccountincident.sql, where 'FIRE' would win over 'WATER' for a description such as 'WATER DAMAGE FROM FIRE'. Reorder the list to change precedence. 'default' applies to descriptions matching no rule, and to NULL/blank descriptions.",
+  "default": "Property",
+  "rules": [
+    { "contains": "THEFT", "incident_type": "Theft" },
+    { "contains": "FIRE", "incident_type": "Fire" },
+    { "contains": "WATER", "incident_type": "Flood" },
+    { "contains": "DAMAGE", "incident_type": "Damage" }
+  ]
+}

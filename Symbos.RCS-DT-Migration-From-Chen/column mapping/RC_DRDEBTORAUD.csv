@@ -1,0 +1,139 @@
+db_col_name,csv_col_name
+Extended_Debt_Code,Extended_Debt_Code
+Client_Code,Client_Code
+Client_Group_Code,Client_Group_Code
+Account_No,Account_No
+Debtor_Code,Debtor_Code
+Date_Time_Changed,Date & Time Changed
+Street_Address_Line1,Street Address Line1
+Street_Number,Street Number
+Street_Name,Street Name
+Street_Suburb,Street Suburb
+Street_State,Street State
+Street_Post_Code,Street Post Code
+Street_Country,Street Country
+Street_Start_Date,Street Start Date
+Street_End_Date,Street End Date
+Mailing_Address,Mailing Address
+Mailing_Address_Number,Mailing Address Number
+Mailing_Address_Name,Mailing Address Name
+Mailing_Suburb,Mailing Suburb
+Mailing_State,Mailing State
+Mailing_Post_Code,Mailing Post Code
+Mailing_Country,Mailing Country
+Mailing_Start_Date,Mailing Start Date
+Mailing_End_Date,Mailing End Date
+Company_Surname,Company/Surname
+Operator,Operator
+Phone_M,Phone(M)
+Mobile_Phone_Start,Mobile Phone Start
+Mobile_Phone_End,Mobile Phone End
+Phone_W,Phone(W)
+Work_Phone_Start,Work Phone Start
+Work_Phone_End,Work Phone End
+Fax_No,Fax No
+Fax_Phone_Start,Fax Phone Start
+Fax_Phone_End,Fax Phone End
+First_Name,First Name
+Legal_Address_Line1,Legal Address Line1
+Legal_Address_Line2,Legal Address Line2
+Legal_Suburb,Legal Suburb
+Legal_State,Legal State
+Legal_Post_Code,Legal Post Code
+Legal_Country,Legal Country
+Update_Source,Update Source
+Business_Address_Line1,Business Address Line1
+Business_Address_Line2,Business Address Line2
+Business_Address_Line3,Business Address Line3
+Business_Suburb,Business Suburb
+Business_State,Business State
+Business_Post_Code,Business Post Code
+Business_Country,Business Country
+Individual_Street_Default,Individual Street Default
+Individual_Mail_Default,Individual Mail Default
+Default,Default
+Business_Mail_Default,Business Mail Default
+Salutation,Salutation
+Title,Title
+Sex,Sex
+Date_Of_Birth,Date Of Birth
+Email_Address,Email Address
+Representative_Name,Representative Name
+Representative_Relationship,Representative Relationship
+Rep_Std,Rep Std
+Rep_Phone,Rep Phone
+Temporary_Address_1,Temporary Address 1
+Temporary_Address_2,Temporary Address 2
+Temporary_Address_3,Temporary Address 3
+Temporary_Suburb,Temporary Suburb
+Temporary_State,Temporary State
+Temporary_Post_Code,Temporary Post Code
+Temporary_Country,Temporary Country
+Temporary_Start_Date,Temporary Start Date
+Temporary_End_Date,Temporary End Date
+Temporary_Default,Temporary Default
+Term_Address_1,Term Address 1
+Term_Address_2,Term Address 2
+Term_Address_3,Term Address 3
+Term_Suburb,Term Suburb
+Term_State,Term State
+Term_Post_Code,Term Post Code
+Term_Country,Term Country
+Term_Start_Date,Term Start Date
+Term_End_Date,Term End Date
+Term_Default,Term Default
+Contact_Phone_STD,Contact Phone STD
+Contact_Phone_C,Contact Phone (C)
+Contact_Phone_Start,Contact Phone Start
+Contact_Phone_End,Contact Phone End
+Trading_Name,Trading Name
+Abn,Abn
+Business_Name,Business Name
+Employer_Name,Employer Name
+Employer_Address_Line_1,Employer Address Line 1
+Employer_Address_Line2,Employer Address Line2
+Employer_Address_Line3,Employer Address Line3
+Employer_Suburb,Employer Suburb
+Employer_State,Employer State
+Employer_Post_Code,Employer Post Code
+Employer_Work_Phone,Employer Work Phone
+Phone_E,Phone (E)
+Employee_Mobile,Employee Mobile
+Sent_To_Clink,Sent To Clink
+Contact_Rep,Contact Rep
+Mail_Rep,Mail Rep
+Rep_Start_Dte,Rep Start Dte
+Rep_End_Dte,Rep End Dte
+Rep_Addr1,Rep Addr1
+Rep_Addr2,Rep Addr2
+Rep_Addr3,Rep Addr3
+Rep_Suburb,Rep Suburb
+Rep_State,Rep State
+rep_post_code,rep post code
+Block_Letter,Block Letter
+Licence,Licence
+Other_Phone_Number,Other Phone Number
+Other_Email_Address,Other Email Address
+Bankruptcy,Bankruptcy
+Bankruptcy_Number,Bankruptcy Number
+Contact,Contact
+Bank_Name,Bank Name
+Bank_Branch,Bank Branch
+Phone_No,Phone No
+Type,Type
+Validity,Validity
+Phone_Start,Phone Start
+Phone_End,Phone End
+Phone_Seq,Phone Seq
+Phone_Last_Contact_Date_Time,Phone Last Contact Date & Time
+Phone_Score,Phone Score
+Rep,Rep
+Phone_No_Changed_By,Phone No Changed By
+Phone_No_Changed_Date_Time,Phone No Changed Date & Time
+Call_Preference_Type,Call Preference Type
+Call_Date_Last_Used,Call Date Last Used
+Corr_Pref_Type,Corr Pref Type
+Corr_Date_Last_Used,Corr Date Last Used
+Block_SMS,Block SMS
+Block_Email,Block Email
+ZID,ZID
