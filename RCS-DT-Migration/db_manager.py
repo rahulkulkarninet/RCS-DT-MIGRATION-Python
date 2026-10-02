@@ -125,20 +125,40 @@ class DatabaseHelper:
         self.logger = logging.getLogger(__name__)
     
     def _get_current_username(self) -> str:
-        """Get the current user's UPN or fallback to getpass."""
+        """Get the current user's UPN, falling back to plain whoami, then getpass."""
+        # Absolute path, not just 'whoami': when this runs under a shell whose PATH
+        # puts a non-Windows whoami first (e.g. Git Bash's usr/bin), the bare command
+        # silently resolves to the wrong binary, which doesn't understand /upn and
+        # exits non-zero.
+        system32_whoami = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'whoami.exe')
         try:
-            # Try to get UPN first
-            username = subprocess.check_output('whoami /upn', shell=True).decode().strip()
-            return username
-        except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
-            self.logger.warning(f"whoami /upn failed: {str(e)}, falling back to getpass")
-            try:
-                # Fallback to getpass
-                username = getpass.getuser()
-                return username
-            except Exception as e:
-                self.logger.error(f"Both whoami /upn and getpass failed: {str(e)}")
-                raise ValueError("Unable to determine current username")
+            return subprocess.check_output([system32_whoami, '/upn']).decode().strip()
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+            self.logger.warning(f"whoami /upn failed: {str(e)}, falling back to plain whoami")
+
+        try:
+            # Plain whoami (DOMAIN\user or COMPUTERNAME\user) works on every Windows
+            # machine regardless of domain membership, unlike /upn.
+            return subprocess.check_output([system32_whoami]).decode().strip()
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+            self.logger.warning(f"whoami failed: {str(e)}, falling back to getpass")
+
+        try:
+            # getpass.getuser() checks LOGNAME/USER/LNAME/USERNAME first and only
+            # imports the Unix-only pwd module if none are set. _load_config (called
+            # from __init__, before this can run) deletes USERNAME as part of
+            # clearing a same-named app config key, and this codebase only runs on
+            # Windows, so if the other three aren't set either, pwd is never
+            # importable - falling back to USERPROFILE/COMPUTERNAME here avoids that
+            # rather than relying on getpass to find a candidate it can't anymore.
+            return getpass.getuser()
+        except ImportError:
+            for env_var in ('USERPROFILE', 'COMPUTERNAME'):
+                value = os.environ.get(env_var)
+                if value:
+                    return os.path.basename(value)
+            self.logger.error("whoami, plain whoami, and getpass all failed to determine a username")
+            raise ValueError("Unable to determine current username")
     
     def _load_config(self) -> Dict[str, str]:
         """Load configuration from environment file using python-dotenv."""

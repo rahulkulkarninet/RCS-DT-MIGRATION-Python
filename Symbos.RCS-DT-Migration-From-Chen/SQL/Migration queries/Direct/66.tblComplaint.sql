@@ -1,4 +1,8 @@
-
+-- ClientReferenceNumber carries CMP_Complaint_Number (the client's own case number) -
+-- added 2026-09-23 on merge with Rahul's Treatment/Hardship work. ComplaintReference here
+-- holds the internal ZID instead (for the child-table joins below), so CMP_Complaint_Number
+-- needed a different home rather than being dropped - ClientReferenceNumber was free and is
+-- the closest semantic fit on tblComplaint.
 INSERT  INTO tblComplaint WITH ( ROWLOCK )
         ( AccountId ,
           DateReceived ,
@@ -46,7 +50,8 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
           LodgedByTeamCode ,
           IsDraft ,
           Classification ,
-          IsRestrictedVisibility
+          IsRestrictedVisibility ,
+          ClientReferenceNumber
         )
         SELECT  A.AccountID ,
                 CMP.CMP_Made_Date ,
@@ -96,7 +101,8 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                 CMP.CMP_Logged_By ,
                 0 ,
                 'COMPLAINT' ,
-                0
+                0 ,
+                CAST(CMP.CMP_Complaint_Number AS NVARCHAR(50))
         FROM    RC_COMPLAINT_EXTRACT CMP
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CMP.Extended_Debt_Code
                 INNER JOIN tblComplainant COMPL ON COMPL.Name = CMP.CMP_Source

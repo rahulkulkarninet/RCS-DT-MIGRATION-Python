@@ -80,7 +80,8 @@
   "Treatment – End of Process": [
     "TREATEOP",
     "TREATMENT-EOP",
-    "TREATMENT EOP"
+    "TREATMENT EOP",
+    "TREATMENTHOLD"
   ],
   "First Demand Letter": [
     "LETT1",
@@ -250,7 +251,6 @@
     "CLHOLD",
     "HOLDS",
     "TREATPAS",
-    "TREATMENTHOLD",
     "AGEEXCLUSION"
   ],
   "Awaiting Instructions – Client": [

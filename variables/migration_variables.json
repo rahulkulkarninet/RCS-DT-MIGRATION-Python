@@ -1,5 +1,5 @@
 {
-    "migration_variables":{
+    "migration_variables": {
         "vwHost": {
             "query_details": {
                 "main_table": "vwHost",
@@ -262,6 +262,10 @@
                 },
                 "RelationshipID_ThirdPartyInsurer": {
                     "default": 40,
+                    "data_type": "int"
+                },
+                "Treatment_MaxAgeDays": {
+                    "default": 365,
                     "data_type": "int"
                 }
             }

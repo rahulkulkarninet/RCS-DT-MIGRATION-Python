@@ -1,0 +1,96 @@
+-- REWRITTEN 2026-09-23: Digital First, Primary and Loop are ONE continuous 37-step
+-- treatment now, not three separate ones. Per the business clarification that day:
+-- score-colour-based branching between them was descoped for T1 go-live, so instead of
+-- three treatments with "re-allocation" between them, the whole thing was built as one
+-- long sequence (Digital First 1-7, Primary extended 8-27, Loop 28-37) made long enough
+-- (~90+ days) that it never needs to loop back. Matches the "New Mapping" tab of
+-- Treatment_Migration_Validation (1).xlsx exactly - see build_combined_treatment*.py in
+-- the scratchpad for how GS-COMBINED was built from it.
+--
+-- This also replaces the old approach of always allocating fresh at step 1: instead it
+-- reads the CURRENT step directly from RC_TREATMENT_STEP_MAPPING, a lookup table loaded
+-- from the "Complete Mapping" tab of that same workbook - Suz's own team's precomputed
+-- current-legacy-code/step -> new-step numbers, not something this script re-derives.
+-- That mapping was confirmed (2026-09-23) to be a literal SequenceNo in the new 37-step
+-- treatment, not something needing further translation.
+--
+-- RC_TREATMENT_STEP_MAPPING only has rows for accounts whose Short_Debt_Code resolved
+-- against our local RC_TREATMENT CSVs (3,153 of CG8110's 3,667 rows in "Complete Mapping"
+-- - the other 514 didn't resolve, most likely because our local extract is a few weeks
+-- stale relative to Suz's fresher export). An account with no row here is excluded via
+-- CROSS APPLY, same as an account with no resolvable treatment always has been - this
+-- migration does not guess a step for an account it has no precomputed mapping for.
+INSERT  INTO tblAccount_Treatment WITH ( ROWLOCK )
+        ( AccountID ,
+          EntityID ,
+          ClientCode ,
+          TreatmentID ,
+          TreatmentVersionID ,
+          TreatmentAllocationRuleID ,
+          RuleSetVersion ,
+          AllocationSource ,
+          AllocatedAt ,
+          CurrentSequenceNo ,
+          NextDueDate ,
+          DriftDays ,
+          StatusID ,
+          FamilyVersionPinTS
+        )
+        SELECT  A.AccountID ,
+                A.EntityID ,
+                'RCS' ,
+                TREAT.TreatmentID ,
+                TREAT.PublishedVersionID ,
+                AR.TreatmentAllocationRuleID ,
+                1 ,
+                'Migration' ,
+                SYSDATETIMEOFFSET() ,
+                MAP.New_Treatment_Step ,
+                DATEADD(DAY, STEP.DayOffset, CAST(GETUTCDATE() AS DATE)) ,
+                0 ,
+                0 ,
+                -- FamilyVersionPinTS (NOT NULL, no default; appeared on dev-debtrak between
+                -- 2026-09-24 and 2026-09-29 alongside the FAM* template-family rename): the
+                -- moment the account was pinned to the treatment's template-family version.
+                -- For a migrated allocation that is the allocation itself, so it takes the
+                -- same timestamp as AllocatedAt. No app-side INSERT existed in Query Store
+                -- yet to copy the app's own value from.
+                SYSDATETIMEOFFSET()
+        FROM    tblAccount A WITH ( NOLOCK )
+                -- One row per account, keyed on the stable Full_Debt_Code business key -
+                -- loaded fresh by build_step_mapping_lookup.py from "Complete Mapping",
+                -- not computed here.
+                CROSS APPLY ( SELECT TOP 1 Client_Code, New_Treatment_Step
+                              FROM   RC_TREATMENT_STEP_MAPPING
+                              WHERE  Full_Debt_Code = A.AccountNumberPrevious
+                            ) MAP
+                -- CROSS, not OUTER: TreatmentID is NOT NULL on tblAccount_Treatment. Only
+                -- one treatment exists now (GS-COMBINED), but this still resolves it via
+                -- the stable TreatmentCode business key rather than hardcoding the
+                -- IDENTITY value, so it does not break if the treatment gets rebuilt.
+                CROSS APPLY ( SELECT TOP 1 TreatmentID, PublishedVersionID
+                              FROM   tblTreatment
+                              WHERE  TreatmentCode = 'GS-COMBINED'
+                                     AND PublishedVersionID IS NOT NULL
+                              ORDER BY TreatmentID
+                            ) TREAT
+                OUTER APPLY ( SELECT TOP 1 TreatmentAllocationRuleID
+                              FROM   tblTreatmentAllocationRule
+                              WHERE  ClientCode = MAP.Client_Code
+                                     AND TreatmentID = TREAT.TreatmentID
+                                     AND IsEnabled = 1
+                              ORDER BY Priority
+                            ) AR
+                -- CROSS, not OUTER: NextDueDate is NOT NULL. MAP.New_Treatment_Step is a
+                -- literal SequenceNo in GS-COMBINED's 37 steps - an account whose step
+                -- number doesn't resolve to a real step (shouldn't happen, but not
+                -- guaranteed by any constraint) is correctly excluded rather than
+                -- inserted with a NULL due date.
+                CROSS APPLY ( SELECT TOP 1 DayOffset
+                              FROM   tblTreatmentStep
+                              WHERE  TreatmentVersionID = TREAT.PublishedVersionID
+                                     AND SequenceNo = MAP.New_Treatment_Step
+                            ) STEP
+        WHERE   A.LoadID = {{LoadID}}
+                AND NOT EXISTS ( SELECT 1 FROM tblAccount_Treatment AT2 WITH ( NOLOCK ) WHERE AT2.AccountID = A.AccountID )
+;
