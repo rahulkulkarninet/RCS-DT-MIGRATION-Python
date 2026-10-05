@@ -6,11 +6,16 @@ import time
 import re
 import traceback
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from collections import OrderedDict
 from config_parser import ConfigParser
+
+# The money columns a processing_stats_metrics.json metric can fill.
+FINANCIAL_RESULT_COLUMNS = ('total_debt', 'total_costs', 'total_paid', 'total_overpayments',
+                            'total_outstanding', 'total_commission', 'total_interest')
 from sqlalchemy import text
 from process_staging import StagingProcessor
 
@@ -549,17 +554,18 @@ class SQLMigrationManager:
         try:
             self.logger.info(f"Exporting {len(prepared_sql)} SQL files to single folder: {export_folder}")
 
-            for key, sql_info in prepared_sql.items():
+            def export_one(key: str, sql_info: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+                """(file path, None) or (None, error message)."""
                 try:
                     # Get sequence and table info
                     sequence = sql_info.get('sequence')
                     table_name = sql_info.get('table_name')
-                    original_subfolder = sql_info.get('subfolder')  
-                    
+                    original_subfolder = sql_info.get('subfolder')
+
                     # Create filename with sequence number for proper ordering
                     filename = f"{sequence:03d}.{table_name}_READY.sql"
                     file_path = export_folder / filename
-                    
+
                     # Prepare file header with metadata
                     header_lines = [
                         f"-- SQL Migration File",
@@ -574,26 +580,37 @@ class SQLMigrationManager:
                         "-- " + "="*60,
                         ""
                     ]
-                    
+
                     # Get the SQL content
                     sql_content = sql_info.get('processed_content', sql_info.get('content', ''))
 
                     if not sql_content:
                         self.logger.warning(f"No SQL content found for {key}")
                         sql_content = f"-- No SQL content available for {table_name}\n-- This is a placeholder\n"
-                    
+
                     # Write the complete file
                     with open(file_path, 'w', encoding='utf-8') as f:
                         f.write('\n'.join(header_lines))
                         f.write(sql_content)
-                    
-                    exported_files.append(str(file_path))
+
                     self.logger.debug(f"Exported sequence {sequence:03d}: {filename}")
-                    
+                    return str(file_path), None
+
                 except Exception as e:
                     error_msg = f"Failed to export {key}: {e}"
-                    export_errors.append(error_msg)
                     self.logger.error(error_msg)
+                    return None, error_msg
+
+            # The export folder is on the share, where each file write is a
+            # round trip; 112 of them in a row took ~30s. Written concurrently,
+            # collected back in prepared_sql order.
+            with ThreadPoolExecutor(max_workers=8, thread_name_prefix='export') as pool:
+                outcomes = list(pool.map(lambda item: export_one(*item), prepared_sql.items()))
+            for path, error in outcomes:
+                if path:
+                    exported_files.append(path)
+                if error:
+                    export_errors.append(error)
 
             # Create master execution file using :r commands
             master_file_path = self._create_master_execution_file(export_folder, exported_files)
@@ -2491,13 +2508,13 @@ PRINT 'All files executed successfully within single transaction.';"""
                     'query_successful': metrics.get('query_successful', True),
                     
                     # Financial columns
-                    'Total_Debt': metrics.get('total_debt', 0.0),
-                    'Total_Paid': metrics.get('total_paid', 0.0),
-                    'Total_Costs': metrics.get('total_costs', 0.0),
-                    'Total_Overpayments': metrics.get('total_overpayments', 0.0),
-                    'Total_Outstanding': metrics.get('total_outstanding', 0.0),
-                    'Total_Commission': metrics.get('total_commission', 0.0),
-                    'Total_Interest': metrics.get('total_interest', 0.0),
+                    'Total_Debt': metrics.get('total_debt'),
+                    'Total_Paid': metrics.get('total_paid'),
+                    'Total_Costs': metrics.get('total_costs'),
+                    'Total_Overpayments': metrics.get('total_overpayments'),
+                    'Total_Outstanding': metrics.get('total_outstanding'),
+                    'Total_Commission': metrics.get('total_commission'),
+                    'Total_Interest': metrics.get('total_interest'),
                     
                     # Additional metadata
                     'config_table_name': table_name,
@@ -2616,6 +2633,21 @@ PRINT 'All files executed successfully within single transaction.';"""
                 query += f" WHERE CreateSessionID = {session_id}"
             elif filter_by == 'sessionid':  # Handle legacy sessionid
                 query += f" WHERE SessionID = {session_id}"
+            elif filter_by in ('account', 'account_session'):
+                # For tables with no LoadID column: count by the account they
+                # belong to, so only this load's (one client, one run) rows count.
+                # account_session also requires this run's CreateSessionID, so
+                # rows DebtRak itself adds to those accounts later are left out.
+                # tblCallHistory is the case: no LoadID, and 073 only started
+                # stamping CreateSessionID on 2026-10-02 (load 2100 and earlier
+                # have it NULL - count those with filter_by 'account').
+                account_column = config.get('account_column', 'AccountID')
+                if not re.fullmatch(r'\w+', account_column):
+                    raise ValueError(f'account_column {account_column!r} is not a column name')
+                query += (f" WHERE {account_column} IN "
+                          f"(SELECT AccountID FROM tblAccount WHERE LoadID = {load_id})")
+                if filter_by == 'account_session':
+                    query += f" AND CreateSessionID = {session_id}"
             else:
                 # Default to loadid if unknown filter type
                 self.logger.warning(f"Unknown filter_by '{filter_by}' for {metric_key}, using LoadID")
@@ -2627,6 +2659,32 @@ PRINT 'All files executed successfully within single transaction.';"""
         except Exception as e:
             self.logger.error(f"Error generating query for {metric_key}: {e}")
             raise
+
+    @staticmethod
+    def _new_table_metrics(table_name: str, from_table: Any, error_message: str = '') -> dict:
+        """A table's metrics before any query has filled them in.
+
+        Financial totals start as None, not 0.0: a table that has no such metric
+        configured must come out NULL in RC_Processing_Stats. A 0.00 there read
+        as a real figure - tblAccount showed outstanding 0.00 next to
+        tblPrincipal's 2.17M for the same load.
+        """
+        ok = not error_message
+        metrics = {
+            'table_name': table_name,
+            'from_table': from_table,
+            'rows_inserted': 0,
+            'query_successful': ok,
+            'queries_executed': [],
+            'start_time': datetime.now(),
+            'end_time': datetime.now(),
+            'success': ok,
+        }
+        for column in FINANCIAL_RESULT_COLUMNS:
+            metrics[column] = None
+        if error_message:
+            metrics['error_message'] = error_message
+        return metrics
 
     def collect_migration_metrics(self, load_id: int, session_id: int, customer_logger: logging.Logger) -> dict:
         """
@@ -2675,23 +2733,7 @@ PRINT 'All files executed successfully within single transaction.';"""
                     
                     # Initialize table metrics if not exists
                     if table_name not in table_metrics:
-                        table_metrics[table_name] = {
-                            'table_name': table_name,
-                            'from_table': from_table,  # Add from_table to metrics
-                            'rows_inserted': 0,
-                            'total_debt': 0.0,
-                            'total_costs': 0.0,
-                            'total_paid': 0.0,
-                            'total_overpayments': 0.0,
-                            'total_outstanding': 0.0,
-                            'total_commission': 0.0,
-                            'total_interest': 0.0,
-                            'query_successful': True,
-                            'queries_executed': [],
-                            'start_time': datetime.now(),
-                            'end_time': datetime.now(),
-                            'success': True
-                        }
+                        table_metrics[table_name] = self._new_table_metrics(table_name, from_table)
                     
                     if result and result[0] is not None:
                         value = result[0]
@@ -2739,24 +2781,8 @@ PRINT 'All files executed successfully within single transaction.';"""
                     from_table = config.get('from_table')
                     
                     if table_name not in table_metrics:
-                        table_metrics[table_name] = {
-                            'table_name': table_name,
-                            'from_table': from_table,
-                            'rows_inserted': 0,
-                            'total_debt': 0.0,
-                            'total_costs': 0.0,
-                            'total_paid': 0.0,
-                            'total_overpayments': 0.0,
-                            'total_outstanding': 0.0,
-                            'total_commission': 0.0,
-                            'total_interest': 0.0,
-                            'query_successful': False,
-                            'queries_executed': [],
-                            'start_time': datetime.now(),
-                            'end_time': datetime.now(),
-                            'success': False,
-                            'error_message': str(e)
-                        }
+                        table_metrics[table_name] = self._new_table_metrics(
+                            table_name, from_table, error_message=str(e))
                     else:
                         table_metrics[table_name]['query_successful'] = False
                         table_metrics[table_name]['success'] = False

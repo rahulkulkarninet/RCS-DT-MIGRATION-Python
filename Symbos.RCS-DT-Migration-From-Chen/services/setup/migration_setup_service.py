@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from phase_timing import PhaseTimer
+
 
 class MigrationSetupService:
     """Encapsulates migration setup/session/load lifecycle operations."""
@@ -277,6 +279,7 @@ class MigrationSetupService:
         # here rather than at the first staging table so the total covers entity
         # resolution, session/load creation and the staging truncate as well.
         processor.load_start_time = datetime.now()
+        processor.phase_timer = PhaseTimer()
 
         try:
             if not processor.set_entity_id_from_customer_code(customer_code):

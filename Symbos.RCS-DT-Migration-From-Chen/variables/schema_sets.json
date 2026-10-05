@@ -1,3 +1,18 @@
+{
+  "_comment": [
+    "Which SQL/Schemas files tools/deploy_schemas.py runs, and in what order.",
+    "Paths are relative to SQL/Schemas. A set may list files, include other sets,",
+    "or both; includes are expanded first and a file named twice runs once.",
+    "protected_tables are tables a DROP would permanently destroy data in -",
+    "nothing reloads them - so the runner refuses to run a file that drops one",
+    "while it holds rows, unless --force says otherwise.",
+    "",
+    "Deliberately in no set, and not to be added back: tblentity_product, which",
+    "changes the DT target schema rather than staging, and the two",
+    "RC_STAGING_TREATMENT* tables, whose only writer - 69.rc_staging_treatments",
+    "- is deleted. Run one by hand with --file if an old environment ever needs",
+    "it."
+  ],
 
   "default_set": "staging",
 

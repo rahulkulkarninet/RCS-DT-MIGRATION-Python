@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+from phase_timing import get_timer
+
 
 class CustomerLifecycleService:
     """Encapsulates customer-level orchestration for staging and migration flow."""
@@ -66,14 +68,17 @@ class CustomerLifecycleService:
                     }
                     continue
 
+                timer = get_timer(processor)
+
                 # Process customer files
-                staging_result = processor.process_customer_staging(
-                    customer_code,
-                    db,
-                    files,
-                    customer_logger=customer_logger,
-                    customer_paths=customer_paths,
-                )
+                with timer.section('staging'):
+                    staging_result = processor.process_customer_staging(
+                        customer_code,
+                        db,
+                        files,
+                        customer_logger=customer_logger,
+                        customer_paths=customer_paths,
+                    )
 
                 # The SQL phase reads the staging tables, so it is only meaningful
                 # once staging has actually filled them for this customer. Every
@@ -81,13 +86,14 @@ class CustomerLifecycleService:
                 # tables holding the previous customer's extract - and this call
                 # used to be made regardless, silently migrating that instead.
                 if staging_result.get('processing_success', False):
-                    migration_result = processor.execute_mixed_sql_methods(
-                        customer_code,
-                        db,
-                        customer_logger=customer_logger,
-                        customer_paths=customer_paths,
-                        staging_result=staging_result,
-                    )
+                    with timer.section('sql'):
+                        migration_result = processor.execute_mixed_sql_methods(
+                            customer_code,
+                            db,
+                            customer_logger=customer_logger,
+                            customer_paths=customer_paths,
+                            staging_result=staging_result,
+                        )
                 else:
                     reason = staging_result.get('status') or 'staging_failed'
                     customer_logger.error(
@@ -115,16 +121,21 @@ class CustomerLifecycleService:
                 # only trustworthy, when the migration itself succeeded.
                 if processor.customer_summary_service.derive_overall_status(
                         combined_result) == 'SUCCESS':
-                    combined_result.update(
-                        processor.archive_staging_tables(
-                            customer_code, db, customer_logger
+                    # After RC_Processing_Stats is written, so this one reaches
+                    # the customer log only.
+                    with timer.section('archive'):
+                        combined_result.update(
+                            processor.archive_staging_tables(
+                                customer_code, db, customer_logger
+                            )
                         )
-                    )
                 else:
                     combined_result['archive_attempted'] = False
                     customer_logger.warning(
                         'Staging tables not archived: the migration did not succeed'
                     )
+
+                timer.log_summary(customer_logger)
 
                 # Print combined summary
                 combined_result['overall_status'] = processor._print_customer_completion_summary(

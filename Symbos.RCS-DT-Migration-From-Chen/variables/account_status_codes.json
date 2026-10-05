@@ -49,7 +49,8 @@
     "BKTD"
   ],
   "Part IX Debt Agreement": [
-    "PARTIX"
+    "PARTIX",
+    "PART9"
   ],
   "Part IX – Instalments": [
     "P9INST"
@@ -99,7 +100,8 @@
     "CALL1A",
     "CALL2",
     "CALL",
-    "CALL2A"
+    "CALL2A",
+    "PHONE2A7"
   ],
   "Unable to Contact": [
     "UNABCON",
@@ -189,7 +191,8 @@
   "Account in Dispute": [
     "DISPT",
     "CLDISPUTE",
-    "DISPUTE"
+    "DISPUTE",
+    "DSPT"
   ],
   "Dispute – Liability": [
     "DISPL"
@@ -251,7 +254,8 @@
     "HOLDS",
     "TREATPAS",
     "TREATMENTHOLD",
-    "AGEEXCLUSION"
+    "AGEEXCLUSION",
+    "INVS"
   ],
   "Awaiting Instructions – Client": [
     "AWIC",
@@ -286,7 +290,8 @@
     "FRAUD"
   ],
   "Debtor Living Overseas": [
-    "OSEAS"
+    "OSEAS",
+    "OVERSEAS"
   ],
   "Low Balance": [
     "LOWBAL"
@@ -336,10 +341,12 @@
     "REMEDIATION"
   ],
   "Recommended Write-off – Bankrupt": [
-    "PENDBANK"
+    "PENDBANK",
+    "BANKRUPT"
   ],
   "Recommended Write-off – Deceased": [
-    "PENDDEC"
+    "PENDDEC",
+    "CDEC"
   ],
   "Recommended Write-off – No Response": [
     "PENDNR"
@@ -481,7 +488,8 @@
     "PTPCPP",
     "PTPC",
     "PTPDPP",
-    "PTPD"
+    "PTPD",
+    "PTPPD"
   ],
   "Part Payment": [
     "PTPP"
@@ -513,7 +521,8 @@
     "W/OFF",
     "DUPCLAIM",
     "DUPLICATE",
-    "UNEC"
+    "UNEC",
+    "PARTW/OF"
   ],
   "Withdrawn by Client": [
     "W/DRAWN",

@@ -1,8 +1,10 @@
 import re
 import os
 import csv
+import fnmatch
 import gc
 import logging
+import threading
 import time
 import pandas as pd
 from datetime import datetime
@@ -15,6 +17,7 @@ from sqlalchemy import create_engine,text,inspect
 from text_normalization import normalize_text_series
 from notes_consolidation import NotesConsolidator
 from schema_files import SchemaSetError, load_staging_schema_files
+import staging_indexes
 
 
 
@@ -28,6 +31,33 @@ ADDITIONAL_REQUIRED_TABLES: Tuple[str, ...] = ('RC_STAGING_COSTS',
 
 DERIVED_TABLES_TO_TRUNCATE: Tuple[str, ...] = ('RC_STAGING_NOTES_ACCOUNT',
                                                'RC_STAGING_COSTS')
+
+# Truncate gives up on a lock after this long, says who holds it, and retries;
+# 20 x 30s outlasts the worst stall seen (262s) with room to spare.
+TRUNCATE_LOCK_TIMEOUT_MS = 30000
+TRUNCATE_ATTEMPTS = 20
+
+STAGING_LOCK_HOLDERS_SQL = """
+SELECT DISTINCT l.request_session_id AS session_id,
+       OBJECT_NAME(l.resource_associated_entity_id) AS table_name,
+       l.request_mode, l.request_status,
+       s.login_name, s.host_name, s.program_name
+FROM sys.dm_tran_locks l
+JOIN sys.dm_exec_sessions s ON s.session_id = l.request_session_id
+WHERE l.resource_database_id = DB_ID()
+  AND l.resource_type = 'OBJECT'
+  AND l.request_session_id <> @@SPID
+  AND OBJECT_SCHEMA_NAME(l.resource_associated_entity_id) = 'dbo'
+  AND OBJECT_NAME(l.resource_associated_entity_id) LIKE 'RC[_]%'
+ORDER BY session_id
+"""
+
+
+def is_lock_timeout(error: BaseException) -> bool:
+    """SQL Server error 1222, 'Lock request time out period exceeded'."""
+    text_ = str(error)
+    return '(1222)' in text_ or 'lock request time out' in text_.lower()
+
 
 # The extract whose load also builds the consolidated per-account notes.
 NOTES_EXTRACT_TABLE = 'RC_NOTES_EXTRACT'
@@ -243,6 +273,8 @@ class StagingProcessor:
         self._owns_config = shared_config_parser is None
     
         self.file_paths = {}
+        # path -> bytes, from the directory listing in get_staging_files.
+        self.file_sizes: Dict[str, int] = {}
         self._table_columns_cache: Dict[tuple[str, str], Dict[str, Dict]] = {}
         # table name -> the SQL/Schemas file that rebuilds it, read once at
         # startup by verify_rebuild_schema_files and used by the archive step.
@@ -253,10 +285,21 @@ class StagingProcessor:
         # are still counted and logged, never silently dropped.
         self.reject_dir: Optional[Path] = None
         # Bad lines captured during the current load_staging_file_group call.
+        # Per thread, because staging loads several tables at once and each
+        # table's load runs start to finish on one worker thread.
+        self._thread_state = threading.local()
         self.bad_line_count = 0
 
         # Regex pattern for sequence number extraction
         self.seq_re = re.compile(r"_(\d{4})\.csv$", re.I)
+
+    @property
+    def bad_line_count(self) -> int:
+        return getattr(self._thread_state, 'bad_line_count', 0)
+
+    @bad_line_count.setter
+    def bad_line_count(self, value: int) -> None:
+        self._thread_state.bad_line_count = value
 
     def initialize(self):
         """Initialize database connection and load configuration."""
@@ -394,17 +437,46 @@ class StagingProcessor:
                 self.logger.warning("No table keywords found in configuration")
                 return False
             
-            # Truncate each staging table. A failure has to leave this block by
-            # raising: returning from inside the with exits the context manager
-            # normally, which commits the truncates that already succeeded and
-            # leaves staging half-emptied - the tables before the failure wiped,
-            # the ones after it still holding the previous customer's extract.
-            with self.db_helper.sqlalchemy_engine.begin() as conn:
+            # A truncate waits for every other session's lock on the table. One
+            # run sat here 262s with nothing in the log to say why, so each
+            # attempt gives up after TRUNCATE_LOCK_TIMEOUT_MS, names whoever
+            # holds the locks, rolls back (nothing emptied) and tries again.
+            for attempt in range(1, TRUNCATE_ATTEMPTS + 1):
+                try:
+                    self._truncate_all_once(table_keywords)
+                    break
+                except Exception as e:
+                    if not is_lock_timeout(e) or attempt == TRUNCATE_ATTEMPTS:
+                        raise
+                    self.logger.warning(
+                        f'Truncate attempt {attempt}/{TRUNCATE_ATTEMPTS} waited '
+                        f'{TRUNCATE_LOCK_TIMEOUT_MS // 1000}s for a lock on staging and '
+                        f'was rolled back (nothing emptied). Held by: '
+                        f'{self.describe_staging_lock_holders()}. Retrying.')
+
+            self.logger.info("All staging tables truncated successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error truncating staging tables (rolled back, nothing was "
+                f"emptied): {e}"
+            )
+            return False
+
+    def _truncate_all_once(self, table_keywords: Dict[str, str]) -> None:
+        # Truncate each staging table. A failure has to leave this block by
+        # raising: returning from inside the with exits the context manager
+        # normally, which commits the truncates that already succeeded and
+        # leaves staging half-emptied - the tables before the failure wiped,
+        # the ones after it still holding the previous customer's extract.
+        with self.db_helper.sqlalchemy_engine.begin() as conn:
+            conn.execute(text(f'SET LOCK_TIMEOUT {TRUNCATE_LOCK_TIMEOUT_MS}'))
+            try:
                 for keyword, table_name in table_keywords.items():
                     if table_name:
                         try:
                             conn.execute(text(f'TRUNCATE TABLE {table_name}'))
-                            #self.logger.info(f"Truncated table: {table_name}")
                         except Exception as e:
                             self.logger.error(f"Failed to truncate table {table_name}: {e}")
                             raise
@@ -418,16 +490,47 @@ class StagingProcessor:
                     except Exception as e:
                         self.logger.error(f"Failed to truncate table {table_name}: {e}")
                         raise
+            finally:
+                # The setting lives on the pooled connection; put it back.
+                try:
+                    conn.execute(text('SET LOCK_TIMEOUT -1'))
+                except Exception:
+                    pass
 
-            self.logger.info("All staging tables truncated successfully")
-            return True
-            
+    def describe_staging_lock_holders(self) -> str:
+        """Who holds or waits on locks on dbo.RC_* right now, on its own connection."""
+        try:
+            frame = self.db_helper.execute_query(STAGING_LOCK_HOLDERS_SQL)
         except Exception as e:
-            self.logger.error(
-                f"Error truncating staging tables (rolled back, nothing was "
-                f"emptied): {e}"
-            )
-            return False
+            return f'(could not read locks: {e})'
+        if frame.empty:
+            return 'no other session (the lock was released before it could be read)'
+        return '; '.join(
+            f"session {r.session_id} {r.login_name}@{r.host_name} ({r.program_name}) "
+            f"{r.request_mode} {r.request_status} on {r.table_name}"
+            for r in frame.itertuples())
+
+    def managed_staging_tables(self) -> List[str]:
+        """Every staging table this processor truncates and loads."""
+        tables = [t for t in (self.config.table_keywords or {}).values() if t]
+        return tables + [t for t in DERIVED_TABLES_TO_TRUNCATE if t not in tables]
+
+    def staging_index_tables(self, table_name: str) -> List[str]:
+        """The tables one table group's load writes to."""
+        if table_name.upper() == NOTES_EXTRACT_TABLE:
+            return [table_name, NOTES_ACCOUNT_TABLE]
+        return [table_name]
+
+    def disable_staging_indexes(self, tables: List[str]) -> int:
+        """Disable nonclustered indexes on these tables for the load."""
+        return len(staging_indexes.disable(self.db_helper.sqlalchemy_engine,
+                                           tables, self.logger))
+
+    def rebuild_staging_indexes(self, tables: Optional[List[str]] = None) -> int:
+        """Rebuild disabled nonclustered indexes; all managed tables by default."""
+        return len(staging_indexes.rebuild_disabled(
+            self.db_helper.sqlalchemy_engine,
+            tables or self.managed_staging_tables(), self.logger))
 
     def verify_staging_tables_exist(self) -> List[str]:
         """Required staging tables that are absent from the database.
@@ -550,22 +653,49 @@ class StagingProcessor:
             return {}
         
     def get_staging_files(self) -> List[str]:
-        """Get list of staging CSV files from input directory using glob."""
-        try:
-            from glob import glob
-            
-            csv_path = self.file_paths['csv']
+        """Get list of staging CSV files (*RC_*.csv) from the input directory.
 
-            # Use glob patterns to find *RC_*.csv files
-            csv_pattern = os.path.join(csv_path, '*RC_*.csv')
-            csv_files = glob(csv_pattern)
+        scandir rather than glob so each file's size comes back with the
+        listing: on Windows DirEntry.stat() needs no extra round trip, where a
+        getsize per file on the share cost ~40 ms each, about a minute for 897
+        files across validation and staging.
+        """
+        try:
+            csv_path = self.file_paths['csv']
+            csv_files = []
+            sizes: Dict[str, int] = {}
+            with os.scandir(csv_path) as entries:
+                for entry in entries:
+                    # glob's rules: case-insensitive on Windows, dot-files skipped.
+                    if entry.name.startswith('.') or not fnmatch.fnmatch(entry.name, '*RC_*.csv'):
+                        continue
+                    if not entry.is_file():
+                        continue
+                    path = os.path.join(csv_path, entry.name)
+                    csv_files.append(path)
+                    try:
+                        sizes[path] = entry.stat().st_size
+                    except OSError:
+                        pass
+            csv_files.sort()
+            self.file_sizes = sizes
 
             self.logger.info(f"Found {len(csv_files)} staging CSV files matching *RC_*.csv")
             return csv_files
-                
+
         except Exception as e:
             self.logger.error(f"Error accessing staging files: {e}")
             return []
+
+    def file_size(self, path: str) -> int:
+        """Size from the last listing, else a stat; 0 if the file is gone."""
+        size = getattr(self, 'file_sizes', {}).get(path)
+        if size is not None:
+            return size
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
     
     def match_file(self, filename: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """

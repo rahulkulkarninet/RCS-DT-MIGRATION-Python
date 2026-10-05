@@ -22,6 +22,23 @@ PivotedAddress AS (
         MAX(CASE WHEN RowNum = 6 THEN value END) AS postcode
     FROM AddressParts
     GROUP BY ContactID, CreateTS
+),
+
+ResolvedAddress AS (
+    SELECT
+        P.ContactID,
+        P.CreateTS,
+        P.address,
+        CASE WHEN SH.IsShifted = 1 THEN NULL       ELSE P.address2 END AS address2,
+        P.address3,
+        CASE WHEN SH.IsShifted = 1 THEN P.address2 ELSE P.suburb   END AS suburb,
+        CASE WHEN SH.IsShifted = 1 THEN P.suburb   ELSE P.state    END AS state,
+        CASE WHEN SH.IsShifted = 1 THEN P.state    ELSE P.postcode END AS postcode
+    FROM PivotedAddress P
+    CROSS APPLY ( SELECT CASE WHEN P.state LIKE '[0-9][0-9][0-9][0-9]'
+                               AND EXISTS ( SELECT 1 FROM tblState S WITH (NOLOCK)
+                                            WHERE S.StateShort = P.suburb )
+                              THEN 1 ELSE 0 END AS IsShifted ) SH
 )
 
 INSERT  INTO tblAddress WITH ( ROWLOCK )
@@ -60,6 +77,6 @@ INSERT  INTO tblAddress WITH ( ROWLOCK )
             {{CurrentSessionID}},
             CreateTS,
             {{LoadID}}
-        FROM PivotedAddress
+        FROM ResolvedAddress
         WHERE address IS NOT NULL OR suburb IS NOT NULL; -- Only include records with meaningful address data
         ;

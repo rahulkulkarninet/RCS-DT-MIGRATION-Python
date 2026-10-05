@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time as dt_time, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional, Dict, Any, List, Tuple, Iterable, Iterator
@@ -19,6 +20,8 @@ from sqlalchemy.engine import Engine
 from urllib.parse import quote_plus
 import pandas as pd
 from dotenv import load_dotenv
+
+from bcp_format import ColumnSpec, format_decimal, render_chunk, render_chunk_cellwise
 
 # --- Load sizing -----------------------------------------------------------
 # pyodbc's fast_executemany pre-allocates a client-side buffer sized by each
@@ -83,6 +86,41 @@ BCP_ROW_TERMINATOR = '\x1e'     # ASCII record separator
 BCP_CODE_PAGE = '65001'         # UTF-8
 BCP_BATCH_SIZE = 10000          # -b: commit granularity, keeps log bursts small
 BCP_MAX_ERRORS = 10             # -m: abort after this many rejected rows
+# Staging tables loaded at once. Each bcp worker is its own process and
+# connection; three keeps memory bounded on the widest extracts.
+DEFAULT_STAGING_WORKERS = 3
+# Rows per bcp data file. Each part is loaded while the next is rendered;
+# 0 writes one file per table and loads it once.
+DEFAULT_BCP_PART_ROWS = 1_000_000
+
+
+_SQLCMD_ROWCOUNT = re.compile(r'^\(\d+ rows? affected\)$')
+
+
+def is_sqlcmd_noise(line: str) -> bool:
+    """True for sqlcmd output not worth a log line: blanks and row counts."""
+    text = line.strip()
+    return not text or bool(_SQLCMD_ROWCOUNT.match(text))
+
+
+def _int_setting(name: str, default: int, minimum: int = 0) -> int:
+    raw = (os.getenv(name) or '').strip()
+    if not raw:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            f'{name}={raw!r} is not a whole number; using {default}')
+        return default
+
+
+def _bool_setting(name: str, default: bool) -> bool:
+    raw = (os.getenv(name) or '').strip().lower()
+    if not raw:
+        return default
+    return raw in ('1', 'true', 'yes', 'y', 'on')
+
 
 class DatabaseHelper:
     def __init__(self, environment: str , config_path: str = None):
@@ -177,6 +215,10 @@ class DatabaseHelper:
                              'BCP_AUTH', 'BCP_DSN', 'BCP_USERNAME',
                              'ARCHIVE_DATABASE',
                              ]
+        # The staging tuning keys (BCP_BATCH_SIZE, BCP_TABLOCK, BCP_PART_ROWS,
+        # STAGING_WORKERS, STAGING_DISABLE_INDEXES) are deliberately not
+        # cleared: they are not credentials, and leaving them lets a run be
+        # tuned from the shell. An env file that sets one still wins.
         for var in env_vars_to_clear:
             if var in os.environ:
                 del os.environ[var]
@@ -205,8 +247,17 @@ class DatabaseHelper:
             # DATABASE. Named per environment - the names differ, so every env
             # file sets this rather than relying on the fallback.
             'ARCHIVE_DATABASE': os.getenv('ARCHIVE_DATABASE', DEFAULT_ARCHIVE_DATABASE),
+            # Staging load tuning. Optional in every env file; the defaults are
+            # what a run uses when a file does not say. STAGING_WORKERS=1,
+            # BCP_TABLOCK=0, BCP_PART_ROWS=0 and STAGING_DISABLE_INDEXES=0
+            # together give the original serial load, for comparing timings.
+            'BCP_BATCH_SIZE': _int_setting('BCP_BATCH_SIZE', BCP_BATCH_SIZE, minimum=1000),
+            'BCP_TABLOCK': _bool_setting('BCP_TABLOCK', True),
+            'BCP_PART_ROWS': _int_setting('BCP_PART_ROWS', DEFAULT_BCP_PART_ROWS),
+            'STAGING_WORKERS': _int_setting('STAGING_WORKERS', DEFAULT_STAGING_WORKERS, minimum=1),
+            'STAGING_DISABLE_INDEXES': _bool_setting('STAGING_DISABLE_INDEXES', True),
         }
-        
+
         # Retained for compatibility with callers that still inspect USERNAME.
         config['USERNAME'] = ''
 
@@ -483,8 +534,10 @@ class DatabaseHelper:
             bufsize=1,                  # line buffered
         )
 
+        suppressed = 0
+
         def pump() -> None:
-            nonlocal last_output
+            nonlocal last_output, suppressed
             try:
                 assert process.stdout is not None
                 for raw in process.stdout:
@@ -492,7 +545,14 @@ class DatabaseHelper:
                     last_output = time.time()
                     lines.append(line)
                     if line.strip():
-                        self.logger.info(f'  sqlcmd | {line.strip()[:200]}')
+                        # Every line is still captured above for the caller.
+                        # Row-count chatter is only kept out of the log: file
+                        # 78 used to print ~75k of them, and logging them to
+                        # the share ran minutes behind a server already done.
+                        if is_sqlcmd_noise(line):
+                            suppressed += 1
+                        else:
+                            self.logger.info(f'  sqlcmd | {line.strip()[:200]}')
                         if progress_callback is not None:
                             try:
                                 progress_callback(line)
@@ -554,6 +614,8 @@ class DatabaseHelper:
         reader.join(timeout=30)
         returncode = process.wait()
         elapsed = time.time() - start
+        if suppressed:
+            self.logger.info(f'  sqlcmd | ({suppressed:,} row-count line(s) not logged)')
         return returncode == 0, '\n'.join(lines), elapsed
 
     def execute_sqlcmd(self, sql_script: str, variables: Dict[str, Any] = None,
@@ -1507,12 +1569,22 @@ class DatabaseHelper:
                               ) -> List[Any]:
         """One value formatter per column, aware of decimal and datetime scale.
         """
+        return [spec.cell for spec in self._build_bcp_column_specs(
+            table, column_order, stats, datetime_scales)]
+
+    def _build_bcp_column_specs(self, table: Table, column_order: List[str],
+                                stats: Optional[Dict[str, int]] = None,
+                                datetime_scales: Optional[Dict[str, int]] = None
+                                ) -> List[ColumnSpec]:
+        """Per column: its per-cell formatter plus what bcp_format needs to
+        render the whole column at once. The per-cell formatter is the
+        definition; bcp_format must match it byte for byte."""
         counters = stats if stats is not None else {}
         if datetime_scales is None:
             datetime_scales = self.get_datetime_scales(table.name,
                                                        table.schema or 'dbo')
         by_name = {c.name: c for c in table.columns}
-        formatters: List[Any] = []
+        formatters: List[ColumnSpec] = []
         for name in column_order:
             column = by_name.get(name)
 
@@ -1525,7 +1597,7 @@ class DatabaseHelper:
                             and not self._is_missing(value)):
                         return value.strftime('%Y-%m-%d')
                     return self._format_bcp_value(value)
-                formatters.append(fmt_date)
+                formatters.append(ColumnSpec('date', fmt_date))
                 continue
 
             digits = self._fractional_digits(column, datetime_scales)
@@ -1541,7 +1613,8 @@ class DatabaseHelper:
                             datetime.combine(date(1900, 1, 1), value),
                             _digits, True)
                     return self._format_bcp_value(value)
-                formatters.append(fmt_datetime)
+                formatters.append(ColumnSpec('datetime', fmt_datetime,
+                                             digits=digits, time_only=time_only))
                 continue
 
             scale = getattr(getattr(column, 'type', None), 'scale', None)
@@ -1549,52 +1622,40 @@ class DatabaseHelper:
                 quantum = Decimal(1).scaleb(-scale)
 
                 def fmt(value, _quantum=quantum, _scale=scale):
-                    if isinstance(value, (float, np.floating, Decimal)):
-                        try:
-                            if pd.isna(value):
-                                return ''
-                        except (TypeError, ValueError):
-                            pass
-                        try:
-
-                            exact = value if isinstance(value, Decimal) else Decimal(str(value))
-                            if -exact.as_tuple().exponent > _scale:
-                                counters['rescaled'] = counters.get('rescaled', 0) + 1
-                            return format(exact.quantize(_quantum, rounding=ROUND_HALF_UP), 'f')
-                        except (InvalidOperation, ValueError):
-                            return self._format_bcp_value(value)
-                    return self._format_bcp_value(value)
-                formatters.append(fmt)
+                    result = format_decimal(value, _quantum, _scale)
+                    if result is None:
+                        return self._format_bcp_value(value)
+                    text, rescaled = result
+                    if rescaled:
+                        counters['rescaled'] = counters.get('rescaled', 0) + 1
+                    return text
+                formatters.append(ColumnSpec('decimal', fmt, quantum=quantum, scale=scale))
             else:
-                formatters.append(self._format_bcp_value)
+                formatters.append(ColumnSpec('generic', self._format_bcp_value))
         return formatters
 
     def _write_bcp_file(self, chunks: Iterable[pd.DataFrame], path: str,
                         column_order: List[str], formatters: List[Any],
-                        table_name: str) -> Tuple[int, int]:
-        """Write chunks to a bcp data file. Returns (rows, sanitised cells)."""
+                        table_name: str,
+                        specs: Optional[List[ColumnSpec]] = None,
+                        stats: Optional[Dict[str, int]] = None) -> Tuple[int, int]:
+        """Write chunks to one bcp data file. Returns (rows, sanitised cells).
+
+        With specs, columns are rendered a whole column at a time
+        (bcp_format.render_chunk); without, one call per cell as before.
+        """
         rows = 0
         sanitised = 0
-        field_term = BCP_FIELD_TERMINATOR
-        row_term = BCP_ROW_TERMINATOR
-
         with open(path, 'w', encoding='utf-8', newline='') as handle:
             for chunk in chunks:
                 if chunk is None or chunk.empty:
                     continue
-                lines = []
-                for record in chunk.itertuples(index=False, name=None):
-                    fields = []
-                    for fmt, value in zip(formatters, record):
-                        rendered = fmt(value)
-                        if field_term in rendered or row_term in rendered:
-                            rendered = (rendered.replace(field_term, ' ')
-                                                .replace(row_term, ' '))
-                            sanitised += 1
-                        fields.append(rendered)
-                    lines.append(field_term.join(fields))
-                handle.write(row_term.join(lines))
-                handle.write(row_term)
+                if specs is not None:
+                    text, hit = render_chunk(chunk, specs, stats if stats is not None else {})
+                else:
+                    text, hit = render_chunk_cellwise(chunk, formatters)
+                handle.write(text)
+                sanitised += hit
                 rows += len(chunk)
 
         if sanitised:
@@ -1605,13 +1666,22 @@ class DatabaseHelper:
         return rows, sanitised
 
     def bulk_insert_via_bcp(self, chunks: Any, table_name: str, schema: str = 'dbo',
-                            batch_size: int = BCP_BATCH_SIZE,
+                            batch_size: Optional[int] = None,
                             temp_dir: Optional[str] = None,
                             keep_temp: bool = False) -> Tuple[bool, int]:
         """Load a frame, or an iterable of frames, using the bcp utility.
+
+        The data is written in parts of about BCP_PART_ROWS rows. Each part is
+        handed to bcp, on a background thread, as soon as it is closed, so the
+        server load of one part overlaps the Python rendering of the next. bcp
+        runs one part at a time, so the table only ever has one bulk load.
+        BCP_PART_ROWS=0 writes a single file and loads it once, as before.
         """
         if isinstance(chunks, pd.DataFrame):
             chunks = [chunks]
+        if batch_size is None:
+            batch_size = self.config.get('BCP_BATCH_SIZE', BCP_BATCH_SIZE)
+        part_rows = self.config.get('BCP_PART_ROWS', DEFAULT_BCP_PART_ROWS)
 
         if not self.bcp_available():
             self.logger.error('bcp utility not available')
@@ -1621,8 +1691,7 @@ class DatabaseHelper:
         column_order = [c.name for c in table.columns]
 
         work_dir = tempfile.mkdtemp(prefix='rcsbcp_', dir=temp_dir)
-        data_path = os.path.join(work_dir, f'{table_name}.dat')
-        error_path = os.path.join(work_dir, f'{table_name}.err')
+        loader: Optional[ThreadPoolExecutor] = None
 
         try:
             first = True
@@ -1648,24 +1717,135 @@ class DatabaseHelper:
                     yield reindexed[column_order]
 
             format_stats: Dict[str, int] = {}
-            formatters = self._build_bcp_formatters(table, column_order, format_stats)
+            specs = self._build_bcp_column_specs(table, column_order, format_stats)
+
+            # Resolved before any data is written: a part can now go to bcp
+            # while later parts are still being read.
+            auth_args = self.bcp_auth_args()
+            if auth_args is None:
+                _usable, reason = self.bcp_ready()
+                raise RuntimeError(reason)
+
+            def bcp_command(data_path: str, error_path: str) -> List[str]:
+                # -S/-d come from the verified auth candidate, because a DSN
+                # candidate passes -D -S <dsn> instead of -S <server>.
+                cmd = [
+                    'bcp', f'{schema}.[{table_name}]', 'in', data_path,
+                    '-c',
+                    '-C', BCP_CODE_PAGE,
+                    '-t', BCP_FIELD_TERMINATOR,
+                    '-r', BCP_ROW_TERMINATOR,
+                    '-k',                      # empty field -> NULL
+                    '-b', str(batch_size),
+                    '-m', str(BCP_MAX_ERRORS),
+                    '-e', error_path,
+                    '-l', '30',
+                ]
+                # A table lock instead of row locks. Safe because the staging
+                # workers each own a different table and nothing reads staging
+                # while it loads.
+                if self.config.get('BCP_TABLOCK', True):
+                    cmd += ['-h', 'TABLOCK']
+                return cmd + auth_args
+
+            failed = threading.Event()
+
+            def load_part(part: Dict[str, Any]) -> Dict[str, Any]:
+                if failed.is_set():
+                    # An earlier part already failed; the table is failed and
+                    # loading more of it only makes the cleanup bigger.
+                    return {'ran': False, 'copied': 0, 'elapsed': 0.0,
+                            'returncode': None, 'output': ''}
+                cmd = bcp_command(part['path'], part['err'])
+                start = time.time()
+                result = self._run_with_retry(
+                    lambda: subprocess.run(cmd, capture_output=True, text=True,
+                                           encoding='utf-8', errors='replace',
+                                           timeout=None),
+                    description=f'bcp load into {table_name} (part {part["index"]})',
+                )
+                elapsed = time.time() - start
+                output = f'{result.stdout or ""}\n{result.stderr or ""}'
+                copied = self._parse_bcp_rows_copied(output)
+                if result.returncode != 0 or copied != part['rows']:
+                    failed.set()
+                if part['index'] > 1 or (part_rows and part['rows'] >= part_rows):
+                    self.logger.info(
+                        f'bcp part {part["index"]}: {copied}/{part["rows"]} rows into '
+                        f'{table_name} in {elapsed:.2f}s')
+                self.last_activity = time.time()
+                return {'ran': True, 'copied': copied, 'elapsed': elapsed,
+                        'returncode': result.returncode, 'output': output}
+
+            loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix='bcp')
+            parts: List[Dict[str, Any]] = []
+            handle = None
+            current: Dict[str, Any] = {}
+            rows_written = 0
+            sanitised = 0
+            stopped_early = False
+
+            def open_part() -> None:
+                nonlocal handle, current
+                index = len(parts) + 1
+                current = {
+                    'index': index,
+                    'path': os.path.join(work_dir, f'{table_name}.{index:03d}.dat'),
+                    'err': os.path.join(work_dir, f'{table_name}.{index:03d}.err'),
+                    'rows': 0,
+                }
+                handle = open(current['path'], 'w', encoding='utf-8', newline='')
+
+            def close_part() -> None:
+                nonlocal handle
+                handle.close()
+                handle = None
+                current['bytes'] = os.path.getsize(current['path'])
+                parts.append(current)
+                current['future'] = loader.submit(load_part, current)
+
             try:
                 # `chunks` is a lazy generator from the CSV reader, consumed here.
                 # Without its own handler a read failure lands in the outer
-                # `except` and gets reported as a bcp failure when bcp has not
-                # even been invoked yet - which is exactly how a CSV
-                # UnicodeDecodeError once surfaced as "bcp load failed".
-                rows_written, _ = self._write_bcp_file(
-                    aligned(chunks), data_path, column_order, formatters, table_name
-                )
+                # `except` and gets reported as a bcp failure - which is exactly
+                # how a CSV UnicodeDecodeError once surfaced as "bcp load failed".
+                for chunk in aligned(chunks):
+                    if failed.is_set():
+                        stopped_early = True
+                        break
+                    text, hit = render_chunk(chunk, specs, format_stats)
+                    if handle is None:
+                        open_part()
+                    handle.write(text)
+                    sanitised += hit
+                    current['rows'] += len(chunk)
+                    rows_written += len(chunk)
+                    if part_rows and current['rows'] >= part_rows:
+                        close_part()
+                if handle is not None:
+                    close_part()
             except Exception as read_error:
+                if handle is not None:
+                    handle.close()
+                failed.set()
+                loader.shutdown(wait=True)
+                copied = sum(p['future'].result()['copied'] for p in parts)
                 self.logger.error(
-                    f'Failed reading source data for {schema}.{table_name} before '
-                    f'bcp was invoked: {type(read_error).__name__}: {read_error}',
+                    f'Failed reading source data for {schema}.{table_name}: '
+                    f'{type(read_error).__name__}: {read_error}'
+                    + (f' ({copied} row(s) from {len(parts)} earlier part(s) were '
+                       f'already loaded; the table is failed)' if parts else
+                       ' (bcp was not invoked)'),
                     exc_info=True,
                 )
                 keep_temp = True
-                return False, 0
+                return False, copied
+
+            if sanitised:
+                self.logger.warning(
+                    f'{table_name}: replaced control characters in {sanitised} cell(s) '
+                    f'that collided with bcp terminators'
+                )
             if format_stats.get('rescaled'):
                 self.logger.warning(
                     f'{table_name}: {format_stats["rescaled"]} value(s) had more '
@@ -1676,51 +1856,30 @@ class DatabaseHelper:
                 self.logger.info(f'Nothing to load into {table_name} (no rows)')
                 return True, 0
 
-            size_mb = os.path.getsize(data_path) / 1024 / 1024
+            size_mb = sum(p['bytes'] for p in parts) / 1024 / 1024
             self.logger.info(
                 f'bcp: wrote {rows_written} rows ({size_mb:.1f} MB) for {table_name}'
+                + (f' in {len(parts)} parts' if len(parts) > 1 else '')
             )
 
-            # -S/-d come from the verified auth candidate, because a DSN
-            # candidate passes -D -S <dsn> instead of -S <server>.
-            cmd = [
-                'bcp', f'{schema}.[{table_name}]', 'in', data_path,
-                '-c',
-                '-C', BCP_CODE_PAGE,
-                '-t', BCP_FIELD_TERMINATOR,
-                '-r', BCP_ROW_TERMINATOR,
-                '-k',                      # empty field -> NULL
-                '-b', str(batch_size),
-                '-m', str(BCP_MAX_ERRORS),
-                '-e', error_path,
-                '-l', '30',
-            ]
-            auth_args = self.bcp_auth_args()
-            if auth_args is None:
+            waited = time.time()
+            results = [p['future'].result() for p in parts]
+            waited = time.time() - waited
+            copied = sum(r['copied'] for r in results)
+            elapsed = sum(r['elapsed'] for r in results)
 
-                _usable, reason = self.bcp_ready()
-                raise RuntimeError(reason)
-            cmd += auth_args     
-
-            start = time.time()
-            result = self._run_with_retry(
-                lambda: subprocess.run(cmd, capture_output=True, text=True,
-                                       encoding='utf-8', errors='replace',
-                                       timeout=None),
-                description=f'bcp load into {table_name}',
-            )
-            elapsed = time.time() - start
-
-            output = f'{result.stdout or ""}\n{result.stderr or ""}'
-            copied = self._parse_bcp_rows_copied(output)
-
-            rejected = max(0, rows_written - copied)
-
-            if result.returncode != 0:
+            for part, result in zip(parts, results):
+                if result['ran'] and result['returncode'] != 0:
+                    self.logger.error(
+                        f'bcp failed for {table_name} part {part["index"]} '
+                        f'(exit {result["returncode"]}): {result["output"].strip()[:1000]}'
+                    )
+                    keep_temp = True
+                    return False, copied
+            if stopped_early or not all(r['ran'] for r in results):
                 self.logger.error(
-                    f'bcp failed for {table_name} (exit {result.returncode}): '
-                    f'{output.strip()[:1000]}'
-                )
+                    f'{table_name}: stopped after a bcp part was rejected; '
+                    f'{copied} of the rows written so far were loaded')
                 keep_temp = True
                 return False, copied
 
@@ -1728,14 +1887,15 @@ class DatabaseHelper:
             self.logger.info(
                 f'bcp loaded {copied}/{rows_written} rows into {table_name} in '
                 f'{elapsed:.2f}s ({rate:.0f} rows/sec)'
+                + (f'; {waited:.2f}s of it after the last part was written'
+                   if len(parts) > 1 else '')
             )
-            self.last_activity = time.time()
 
+            rejected = max(0, rows_written - copied)
             if rejected:
-
                 self.logger.error(
                     f'{table_name}: bcp rejected {rejected} of {rows_written} row(s). '
-                    f'Rejected rows and reasons kept at {error_path}'
+                    f'Rejected rows and reasons kept in the .err files at {work_dir}'
                 )
                 keep_temp = True
                 return False, copied
@@ -1752,6 +1912,8 @@ class DatabaseHelper:
             )
             return False, 0
         finally:
+            if loader is not None:
+                loader.shutdown(wait=True)
             if keep_temp:
                 self.logger.info(f'bcp working files kept at {work_dir}')
             else:

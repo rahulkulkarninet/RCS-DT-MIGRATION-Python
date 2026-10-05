@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -7,6 +8,28 @@ import pandas as pd
 
 from DT_query_processor import SQLMigrationManager
 from interaction import GATE_SQL
+from phase_timing import get_timer
+
+
+def assign_files_to_tables(tables, execution_results) -> Dict[str, list]:
+    """Map each executed SQL file to the one metrics table it writes.
+
+    A file's name (sequence and _READY stripped, e.g. 'tblentry_notes') belongs
+    to the longest table name it starts with, followed by '_' or nothing, with
+    an optional plural 's' ('tblcosts' -> tblCost). So 'tblcontactdetail_x' is
+    tblContactDetail, not tblContact, and 'tblaccount_contact_x' is
+    tblAccount_Contact, not tblAccount. Files matching no table are left out.
+    """
+    by_length = sorted(tables, key=len, reverse=True)
+    patterns = [(t, re.compile(rf'^{re.escape(t.lower())}s?(_|$)')) for t in by_length]
+    assigned: Dict[str, list] = {t: [] for t in tables}
+    for result in execution_results:
+        name = str(result.get('table_name', '')).lower()
+        for table, pattern in patterns:
+            if pattern.match(name):
+                assigned[table].append(result)
+                break
+    return assigned
 
 
 class CustomerSQLWorkflowService:
@@ -29,6 +52,26 @@ class CustomerSQLWorkflowService:
         try:
             if not self.initialize_sql_manager_step(processor, customer_code, db, customer_logger):
                 return self.create_sql_failure_result(customer_code, db, customer_paths, 'initialization_failed')
+
+            # Each mapping step is an update plus its check; lap() closes one
+            # step and opens the next without re-indenting the whole sequence.
+            timer = get_timer(processor)
+
+            # Staging disables its nonclustered indexes for the load and rebuilds
+            # them after. A run that died in between leaves them off, and these
+            # queries depend on them, so make sure before anything reads staging.
+            with timer.section('sql.index_guard'):
+                try:
+                    rebuilt = processor.staging_processor.rebuild_staging_indexes()
+                    if rebuilt:
+                        customer_logger.warning(
+                            f'{rebuilt} staging index(es) were still disabled and have '
+                            'been rebuilt before the SQL phase')
+                except Exception as e:
+                    return self.create_sql_failure_result(
+                        customer_code, db, customer_paths, 'staging_indexes_disabled', str(e))
+
+            timer.restart_lap()
 
             status_update_result = processor.update_rc_account_extract_ma_status(customer_logger)
             if not status_update_result.get('success', False):
@@ -59,6 +102,7 @@ class CustomerSQLWorkflowService:
             if invalid_statuses:
                 customer_logger.warning(f'Invalid status codes: {invalid_statuses}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.status')
 
             bank_method_update_result = processor.update_payment_methods(customer_logger)
             if not bank_method_update_result.get('success', False):
@@ -90,6 +134,7 @@ class CustomerSQLWorkflowService:
             if invalid_methods:
                 customer_logger.warning(f'Invalid bank transaction methods: {invalid_methods}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.bank_transaction_method')
 
             arrangement_type_update_result = processor.update_arrangement_types(customer_logger)
             if not arrangement_type_update_result.get('success', False):
@@ -126,6 +171,7 @@ class CustomerSQLWorkflowService:
                 f"Rows defaulted to '{arrangement_type_update_result.get('default_label', 'n/a')}': "
                 f"{arrangement_type_update_result.get('rows_defaulted', 0)}")
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.arrangement_type')
 
             frequency_update_result = processor.update_frequencies(customer_logger)
             if not frequency_update_result.get('success', False):
@@ -163,6 +209,7 @@ class CustomerSQLWorkflowService:
                     f'Invalid frequencies (these will migrate as a NULL FrequencyID): '
                     f'{invalid_frequencies}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.frequency')
 
             related_party_type_update_result = processor.update_related_party_types(
                 customer_logger)
@@ -205,6 +252,7 @@ class CustomerSQLWorkflowService:
                 f"Rows swept to '{related_party_type_update_result.get('fallback_label', 'n/a')}': "
                 f"{related_party_type_update_result.get('rows_defaulted', 0)}")
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.related_party_type')
 
             incident_type_update_result = processor.update_incident_types(customer_logger)
             if not incident_type_update_result.get('success', False):
@@ -251,6 +299,7 @@ class CustomerSQLWorkflowService:
                 f"Rows swept to the default '{incident_type_update_result.get('default_label', 'n/a')}': "
                 f"{incident_type_update_result.get('rows_defaulted', 0)}")
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.incident_type')
 
             closure_reason_update_result = processor.update_closure_reasons(customer_logger)
             if not closure_reason_update_result.get('success', False):
@@ -295,6 +344,7 @@ class CustomerSQLWorkflowService:
                 f"Rows defaulted to '{closure_reason_update_result.get('fallback_label', 'n/a')}': "
                 f"{closure_reason_update_result.get('rows_defaulted', 0)}")
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.closure_reason')
 
             cost_update_result = processor.update_costs(customer_logger)
             if not cost_update_result.get('success', False):
@@ -340,6 +390,7 @@ class CustomerSQLWorkflowService:
             if unmapped_cost_codes:
                 customer_logger.warning(f'Unmapped charged cost codes: {unmapped_cost_codes}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.cost')
 
             operator_contact_update_result = processor.update_operator_contacts(customer_logger)
             if not operator_contact_update_result.get('success', False):
@@ -395,6 +446,7 @@ class CustomerSQLWorkflowService:
                 f"({operator_contact_update_result.get('fallback_contact', 'n/a')}): "
                 f'{len(unresolved_operator_codes)}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.operator_contact')
 
             complainant_update_result = processor.update_complainants(customer_logger)
             if not complainant_update_result.get('success', False):
@@ -445,6 +497,7 @@ class CustomerSQLWorkflowService:
                     f'Invalid complainant sources (these complaints will NOT migrate): '
                     f'{invalid_complainants}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.complainant')
 
             complaint_root_update_result = processor.update_complaint_roots(customer_logger)
             if not complaint_root_update_result.get('success', False):
@@ -494,6 +547,7 @@ class CustomerSQLWorkflowService:
             if invalid_roots:
                 customer_logger.warning(f'Invalid complaint issue values: {invalid_roots}')
             customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.complaint_root')
 
             pending_moves = getattr(processor, 'pending_file_moves', []) or []
             pending_file_count = sum(len(entry['files']) for entry in pending_moves)
@@ -541,43 +595,48 @@ class CustomerSQLWorkflowService:
 
             # All mapping checks are confirmed; only now do the staged files move
             # out of the source folder.
-            file_move_summary = processor.flush_pending_file_moves(customer_logger)
+            with timer.section('file_moves'):
+                file_move_summary = processor.flush_pending_file_moves(customer_logger)
 
-            prepared_sql = self.prepare_sql_files_step(processor, customer_code, db, customer_logger)
+            with timer.section('sql.prepare_export'):
+                prepared_sql = self.prepare_sql_files_step(processor, customer_code, db, customer_logger)
+                sql_export_path = None
+                if prepared_sql:
+                    sql_export_path = self.export_sql_files_step(
+                        processor,
+                        customer_code,
+                        db,
+                        customer_logger,
+                        customer_paths,
+                        prepared_sql,
+                    )
             if not prepared_sql:
                 return self.create_sql_failure_result(customer_code, db, customer_paths, 'sql_preparation_failed')
-
-            sql_export_path = self.export_sql_files_step(
-                processor,
-                customer_code,
-                db,
-                customer_logger,
-                customer_paths,
-                prepared_sql,
-            )
             if not sql_export_path:
                 return self.create_sql_failure_result(customer_code, db, customer_paths, 'sql_export_failed')
 
-            mixed_execution_results = self.execute_sql_files_step(
-                processor,
-                customer_code,
-                db,
-                customer_logger,
-                sql_export_path,
-            )
+            with timer.section('sql.files'):
+                mixed_execution_results = self.execute_sql_files_step(
+                    processor,
+                    customer_code,
+                    db,
+                    customer_logger,
+                    sql_export_path,
+                )
 
             # Post-batch, unlike the other mapping transforms: tblAddress.State is only
             # populated once files 37-43 have run, so the free-text states that
             # 44.tbladdress_Assign_StateID.sql could not match can only be resolved now.
             # A failure here leaves StateID NULL, exactly as before this step existed, so
             # it is reported rather than treated as a failed migration.
-            state_update_result = processor.update_states(customer_logger)
-            state_check_result = processor._check_states_step(
-                customer_code,
-                db,
-                customer_logger,
-                state_update_result,
-            )
+            with timer.section('sql.state_update'):
+                state_update_result = processor.update_states(customer_logger)
+                state_check_result = processor._check_states_step(
+                    customer_code,
+                    db,
+                    customer_logger,
+                    state_update_result,
+                )
 
             customer_logger.info(f"{'='*50}")
             customer_logger.info(
@@ -596,12 +655,13 @@ class CustomerSQLWorkflowService:
                     f"{state_update_result.get('error', 'Unknown error')}")
             customer_logger.info(f"{'='*50}")
 
-            migration_stats = self.collect_migration_metrics_step(
-                processor,
-                customer_code,
-                db,
-                customer_logger,
-            )
+            with timer.section('sql.metrics'):
+                migration_stats = self.collect_migration_metrics_step(
+                    processor,
+                    customer_code,
+                    db,
+                    customer_logger,
+                )
 
             final_result = self.process_sql_execution_results_step(
                 processor,
@@ -765,7 +825,13 @@ class CustomerSQLWorkflowService:
             financial_tables = self.get_financial_tables_from_metrics(processor, migration_stats)
             total_migration_rows = 0
             execution_results = mixed_execution_results.get('execution_results', {})
-            num_migration_tables = len([t for t in migration_stats.keys() if not t.startswith('_')])
+            metric_tables = [t for t in migration_stats.keys() if not t.startswith('_')]
+            files_by_table = assign_files_to_tables(metric_tables, execution_results.values())
+            executed = [r for r in execution_results.values() if r.get('executed')]
+            window_start = min((r['start_time'] for r in executed if r.get('start_time')),
+                               default=datetime.now())
+            window_end = max((r['end_time'] for r in executed if r.get('end_time')),
+                             default=datetime.now())
 
             for table_name, metrics in migration_stats.items():
                 if table_name.startswith('_'):
@@ -774,37 +840,26 @@ class CustomerSQLWorkflowService:
                 rows_migrated = metrics.get('rows_inserted', 0)
                 total_migration_rows += rows_migrated
 
-                execution_timing = None
-                for _, exec_result in execution_results.items():
-                    if table_name.lower() in exec_result.get('table_name', '').lower():
-                        execution_timing = exec_result
-                        break
-
-                if execution_timing and execution_timing.get('executed', False):
-                    start_time = execution_timing.get('start_time', datetime.now())
-                    end_time = execution_timing.get('end_time', datetime.now())
-                    duration_seconds = execution_timing.get('execution_time', 0)
-                    rows_per_second = execution_timing.get('rows_per_second', 0)
-                    success = execution_timing.get('executed', False) and not execution_timing.get('error')
-                    error_message = execution_timing.get('error', '')
+                # Every SQL file that writes this table, summed: tblEntry is
+                # three files, not just the first one a substring match found.
+                # A table no file writes on its own (tblLoad, tblSession, the
+                # notes fold, what 078 writes) gets 0s over the SQL window
+                # rather than an even share of the total, which looked real.
+                files = [r for r in files_by_table.get(table_name, []) if r.get('executed')]
+                metrics_ok = metrics.get('query_successful', True)
+                if files:
+                    start_time = min(r.get('start_time') or window_start for r in files)
+                    end_time = max(r.get('end_time') or window_end for r in files)
+                    duration_seconds = sum(r.get('execution_time', 0) or 0 for r in files)
+                    rows_per_second = rows_migrated / duration_seconds if duration_seconds > 0 else 0
+                    errors = [str(r['error']) for r in files if r.get('error')]
+                    success = metrics_ok and not errors
+                    error_message = '; '.join(errors)
                 else:
-                    total_migration_execution_time = mixed_execution_results.get('total_execution_time', 0)
-                    per_table_duration = (
-                        round(total_migration_execution_time / num_migration_tables, 2)
-                        if num_migration_tables > 0
-                        else 0
-                    )
-
-                    start_time = datetime.now() - pd.Timedelta(seconds=total_migration_execution_time)
-                    end_time = datetime.now()
-                    duration_seconds = per_table_duration
-                    rows_per_second = round(
-                        rows_migrated / total_migration_execution_time
-                        if total_migration_execution_time > 0
-                        else 0,
-                        0,
-                    )
-                    success = metrics.get('query_successful', True)
+                    start_time, end_time = window_start, window_end
+                    duration_seconds = 0
+                    rows_per_second = 0
+                    success = metrics_ok
                     error_message = ''
 
                 migration_stat = {
@@ -907,7 +962,7 @@ class CustomerSQLWorkflowService:
 
             processor._migration_processing_stats.append(migration_summary_stat)
             customer_logger.info(
-                f'Migration metrics processed: {num_migration_tables} tables, {total_migration_rows:,} total records'
+                f'Migration metrics processed: {len(metric_tables)} tables, {total_migration_rows:,} total records'
             )
 
         else:
@@ -983,11 +1038,13 @@ class CustomerSQLWorkflowService:
             load_duration = (load_end_time - load_start_time).total_seconds()
             staging_rows = [s for s in processor.processing_stats
                             if not str(s.get('table_name', '')).startswith('DT_Migration_')]
-            total_rows_inserted = sum(s.get('rows_inserted', 0) or 0 for s in processor.processing_stats)
-            # Same rule the staging workflow uses for its own overall_success: empty
-            # tables are not failures, so only rows that actually loaded are judged.
-            staging_success = all(s.get('success', False) for s in staging_rows
-                                  if (s.get('rows_inserted', 0) or 0) > 0)
+            # Rows staged, like files_count and csv_rows beside it. This used to
+            # add the DT_Migration_ rows on top - staged plus migrated, a number
+            # that measures nothing. Migrated rows are in DT_Migration_Summary.
+            total_rows_inserted = sum(s.get('rows_inserted', 0) or 0 for s in staging_rows)
+            # Same rule the staging workflow uses for its own overall_success: every
+            # table must succeed, and empty tables already count as success.
+            staging_success = all(s.get('success', False) for s in staging_rows)
 
             load_total_stat = {
                 'RunID': getattr(processor, 'run_id', None),
@@ -1019,8 +1076,17 @@ class CustomerSQLWorkflowService:
             processor.processing_stats.append(load_total_stat)
             customer_logger.info(
                 f'[{db}] {customer_code} - Total load time: {load_duration:.1f}s '
-                f'({load_duration / 60:.1f} min), {total_rows_inserted:,} rows'
+                f'({load_duration / 60:.1f} min), {total_rows_inserted:,} rows staged'
             )
+
+            # After DT_Load_Total so they are excluded from its sums. Sections
+            # still open (the outer 'sql', the archive) only reach the log.
+            phase_base = {k: load_total_stat[k] for k in (
+                'RunID', 'Staging_LoadID', 'customer_code', 'db', 'EntityID', 'user',
+                'Migration_LoadID', 'Migration_SessionID')}
+            for col in processor.staging_processor.get_all_possible_financial_columns():
+                phase_base[col] = None
+            processor.processing_stats.extend(get_timer(processor).stats_rows(phase_base))
 
         processing_stats_df = pd.DataFrame(processor.processing_stats)
         if len(processing_stats_df) > 0:

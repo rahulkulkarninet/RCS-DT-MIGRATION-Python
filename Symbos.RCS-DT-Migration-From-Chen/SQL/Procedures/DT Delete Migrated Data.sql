@@ -299,8 +299,21 @@ BEGIN
     DROP TABLE #AdjustmentScope;
 END
 
+-- Application-populated: workflow prompts raised against migrated accounts. Also references
+-- tblWorkflowLine and tblContact (Prompt_ContactID), so it must go before either is deleted,
+-- and a row can belong to this load through any of the three.
+SELECT 1--Batch delete for tblAccount_OutstandingAction
+while (@@ROWCOUNT >0)BEGIN
+	DELETE TOP (@BatchSize) OA
+	FROM tblAccount_OutstandingAction OA
+	WHERE EXISTS (SELECT 1 FROM tblAccount A WHERE A.AccountID = OA.AccountID AND A.LoadID = @LoadID)
+	   OR EXISTS (SELECT 1 FROM tblWorkflowLine WF INNER JOIN tblAccount A ON WF.AccountID = A.AccountID
+	              WHERE WF.WorkflowLineID = OA.WorkflowLineID AND A.LoadID = @LoadID)
+	   OR EXISTS (SELECT 1 FROM tblContact C WHERE C.ContactID = OA.Prompt_ContactID AND C.LoadID = @LoadID)
+END
+
 SELECT 1--Batch delete for tblLastLetterSent
-while (@@ROWCOUNT >0)  
+while (@@ROWCOUNT >0)
 BEGIN  
 	DELETE TOP (@BatchSize) LLS 
 	FROM tblLastLetterSent LLS

@@ -1,3 +1,6 @@
+
+SET NOCOUNT ON;
+
 DECLARE @InsertedArangments TABLE
     (
       ID INT IDENTITY(1, 1) ,
@@ -337,6 +340,7 @@ WHILE ( @loopIndex <= @maxIndex )
 
 PRINT SYSDATETIME()
 PRINT 'Finished Account Status History.'
+PRINT 'Creating other police reports'
 
 
 DECLARE @OtherPoliceReports TABLE (
@@ -415,48 +419,196 @@ BEGIN
     END
 END
 
-DECLARE @currContactID INT
+PRINT SYSDATETIME()
+PRINT 'Finished other police reports.'
 
-DECLARE @InsertedAccountContacts TABLE
+DECLARE @TodayDate DATETIME = dbo.fnDateEndOfDay(GETDATE());
+DECLARE @OneWeekAgoDate DATETIME = dbo.fnDate(DATEADD(DAY, -7, GETDATE()));
+DECLARE @OneMonthAgoDate DATETIME = dbo.fnDate(DATEADD(DAY, -30, GETDATE()));
+
+IF OBJECT_ID('tempdb..#LUPPairs') IS NOT NULL DROP TABLE #LUPPairs;
+CREATE TABLE #LUPPairs
 (
-ID INT IDENTITY(1, 1),
-AccountID INT,
-ContactID INT
+	AccountID INT NOT NULL,
+	ContactID INT NOT NULL,
+	PRIMARY KEY (AccountID, ContactID)
+);
+
+INSERT INTO #LUPPairs (AccountID, ContactID)
+SELECT DISTINCT A.AccountID, C.ContactID
+FROM tblContact C WITH (NOLOCK)
+	INNER JOIN tblAccount_Contact AC WITH (NOLOCK) ON C.ContactID = AC.ContactID
+	INNER JOIN tblAccount A WITH (NOLOCK) ON AC.AccountID = A.AccountID
+WHERE A.LoadID = {{LoadID}}
+	AND A.CloseDate IS NULL
+	AND A.StatusID = 1 AND AC.StatusID = 1 AND C.StatusID = 1;
+
+PRINT CAST(SYSDATETIME() AS VARCHAR(19)) + ' Recalculating correspondence counters for '
+    + CAST(@@ROWCOUNT AS VARCHAR(10)) + ' account contacts.';
+
+;WITH AccountContacts AS
+(
+	SELECT AccountID, ContactID FROM #LUPPairs
 )
-
-INSERT INTO @InsertedAccountContacts
-(AccountID,
-ContactID
+,Letter7DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(DISTINCT ch.CorrespondenceHistoryID) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN tblLetter L ON L.LetterID = ch.CorrespondenceId
+	INNER JOIN tblCommunication_Contact c ON c.CommunicationID = L.CommunicationID
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Letter'
+	AND ch.CorrespondenceTS BETWEEN @OneWeekAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	-- UPDATED: Exclude digital letters by BOTH PrintStatusID and CommunicationMethodID
+	AND ISNULL(L.PrintStatusID,0) <> -2
+	AND ISNULL(c.CommunicationMethodID,0) <> 5 -- Exclude Digital communication method
+	GROUP BY ch.AccountID, ch.ContactID
 )
-SELECT AC.AccountID, AC.ContactID
-FROM tblAccount_Contact AC
-JOIN tblAccount A ON A.AccountID = AC.AccountID
-WHERE A.LoadID = {{LoadID}};
+,Letter30DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(DISTINCT ch.CorrespondenceHistoryID) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN tblLetter L ON L.LetterID = ch.CorrespondenceId
+	INNER JOIN tblCommunication_Contact c ON c.CommunicationID = L.CommunicationID
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Letter'
+	AND ch.CorrespondenceTS BETWEEN @OneMonthAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	-- UPDATED: Exclude digital letters by BOTH PrintStatusID and CommunicationMethodID
+	AND ISNULL(L.PrintStatusID,0) <> -2
+	AND ISNULL(c.CommunicationMethodID,0) <> 5 -- Exclude Digital communication method
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,Email7DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Email'
+	AND ch.CorrespondenceTS BETWEEN @OneWeekAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	AND ch.CorrespondenceStatusID IN (2, 9) -- #319: Delivered (2) + Externally Sent (9)
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,Email30DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Email'
+	AND ch.CorrespondenceTS BETWEEN @OneMonthAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	AND ch.CorrespondenceStatusID IN (2, 9) -- #319: Delivered (2) + Externally Sent (9)
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,SMS7DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'SMS'
+	AND ch.CorrespondenceTS BETWEEN @OneWeekAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	AND ch.CorrespondenceStatusID IN (2, 8) -- #319: Successful (2) + Externally Sent (8)
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,SMS30DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0)  AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'SMS'
+	AND ch.CorrespondenceTS BETWEEN @OneMonthAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	AND ch.CorrespondenceStatusID IN (2, 8) -- #319: Successful (2) + Externally Sent (8)
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,Phone7DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Phone'
+	AND ch.CorrespondenceTS BETWEEN @OneWeekAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,Phone30DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'Phone'
+	AND ch.CorrespondenceTS BETWEEN @OneMonthAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,IVR7DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'IVR'
+	AND ch.CorrespondenceTS BETWEEN @OneWeekAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	GROUP BY ch.AccountID, ch.ContactID
+)
+,IVR30DayCount AS
+(
+	SELECT ch.AccountID, ch.ContactID, COUNT(0) AS TotalCount
+	FROM tblCorrespondenceHistory ch
+	INNER JOIN AccountContacts ac ON ac.AccountID = ch.AccountID AND ac.ContactID = ch.ContactID
+	WHERE ch.CorrespondenceType = 'IVR'
+	AND ch.CorrespondenceTS BETWEEN @OneMonthAgoDate AND @TodayDate
+	AND ch.StatusID = 1
+	AND ch.CorrespondenceSolicited = 0 -- UNSOLICITED
+	GROUP BY ch.AccountID, ch.ContactID
+)
+UPDATE ac
+SET LUPLetterCountLast7days = ISNULL(l7.TotalCount,0),
+LUPLetterCountLast30days = ISNULL(l30.TotalCount,0),
+LUPEmailCountLast7days = ISNULL(e7.TotalCount,0),
+LUPEmailCountLast30days = ISNULL(e30.TotalCount,0),
+LUPSMSCountLast7days = ISNULL(s7.TotalCount,0),
+LUPSMSCountLast30days = ISNULL(s30.TotalCount,0),
+LUPPhoneCountLast7days = ISNULL(p7.TotalCount,0),
+LUPPhoneCountLast30days = ISNULL(p30.TotalCount,0),
+LUPIVRCountLast7days = ISNULL(v7.TotalCount,0),
+LUPIVRCountLast30days = ISNULL(v30.TotalCount,0),
+LUPCorrespondenceCountLast7days = ISNULL(l7.TotalCount,0) + ISNULL(e7.TotalCount,0) + ISNULL(s7.TotalCount,0) + ISNULL(p7.TotalCount,0) + ISNULL(v7.TotalCount,0),
+LUPCorrespondenceCountLast30days = ISNULL(l30.TotalCount,0) + ISNULL(e30.TotalCount,0) + ISNULL(s30.TotalCount,0) + ISNULL(p30.TotalCount,0) + ISNULL(v30.TotalCount,0),
+ModifyID = 1,
+ModifySessionID = {{CurrentSessionID}},
+ModifyTS = GETDATE()
+FROM tblAccount_Contact ac
+INNER JOIN AccountContacts acc ON acc.AccountID = ac.AccountID AND acc.ContactID = ac.ContactID
+LEFT JOIN Letter7DayCount l7 ON l7.AccountID = ac.AccountID AND l7.ContactID = ac.ContactID
+LEFT JOIN Letter30DayCount l30 ON l30.AccountID = ac.AccountID AND l30.ContactID = ac.ContactID
+LEFT JOIN Email7DayCount e7 ON e7.AccountID = ac.AccountID AND e7.ContactID = ac.ContactID
+LEFT JOIN Email30DayCount e30 ON e30.AccountID = ac.AccountID AND e30.ContactID = ac.ContactID
+LEFT JOIN SMS7DayCount s7 ON s7.AccountID = ac.AccountID AND s7.ContactID = ac.ContactID
+LEFT JOIN SMS30DayCount s30 ON s30.AccountID = ac.AccountID AND s30.ContactID = ac.ContactID
+LEFT JOIN Phone7DayCount p7 ON p7.AccountID = ac.AccountID AND p7.ContactID = ac.ContactID
+LEFT JOIN Phone30DayCount p30 ON p30.AccountID = ac.AccountID AND p30.ContactID = ac.ContactID
+LEFT JOIN IVR7DayCount v7 ON v7.AccountID = ac.AccountID AND v7.ContactID = ac.ContactID
+LEFT JOIN IVR30DayCount v30 ON v30.AccountID = ac.AccountID AND v30.ContactID = ac.ContactID
+OPTION (RECOMPILE);
 
-SET @loopIndex = 1
-SELECT  @maxIndex = MAX(ID) FROM @InsertedAccountContacts
+PRINT CAST(SYSDATETIME() AS VARCHAR(19)) + ' Correspondence counters updated for '
+    + CAST(@@ROWCOUNT AS VARCHAR(10)) + ' account contacts.';
 
-WHILE ( @loopIndex <= @maxIndex )
-    BEGIN
-        SELECT  @currAccountID = AccountID, @currContactID = ContactID
-        FROM    @InsertedAccountContacts
-        WHERE   ID = @loopIndex
+DROP TABLE #LUPPairs;
 
-        EXEC dbo.spAccount_Contact_CorrespondenceRecalculate
-            @User_ContactID = 1,
-            @User_SessionID = {{CurrentSessionID}},
-            @AccountID = @currAccountID,
-            @ContactID = @currContactID;
-
-        SET @loopIndex = @loopIndex + 1
-
-        -- Print message every 1000 iterations
-        IF @loopIndex % 1000 = 0
-        BEGIN
-            PRINT CAST(SYSDATETIME() AS VARCHAR(19)) + ' Processing ' + CAST(@loopIndex AS VARCHAR(10))
-        END
-
-    END
     
 PRINT SYSDATETIME()
 PRINT 'Calculating account totals.'
@@ -485,3 +637,6 @@ WHILE ( @loopIndex <= @maxIndex )
         END
 
     END
+
+PRINT SYSDATETIME()
+PRINT 'Finished account totals.'

@@ -46,7 +46,8 @@ class CustomerSummaryService:
         staging_rows = result.get('total_rows_inserted', 0)
         sql_files_executed = result.get('sql_files_executed', 0)
         sql_files_failed = result.get('sql_files_failed', 0)
-        tables_processed = len(result.get('processing_stats', []))
+        tables_processed = sum(1 for s in result.get('processing_stats', [])
+                               if s.get('from_table') != 'PHASE')
         sql_migration_completed = result.get('sql_migration_completed', False)
 
         # Calculate actual migration rows from migration_stats

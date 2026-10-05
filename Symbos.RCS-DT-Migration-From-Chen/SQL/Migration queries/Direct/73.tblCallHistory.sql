@@ -14,7 +14,9 @@ INSERT  INTO tblCallHistory
           AgentDispositionDesc ,
           SwitchDispositionDesc ,
           CommunicationID,
-          Z_REF
+          Z_REF,
+          CreateID ,
+          CreateSessionID
         )
         SELECT  1 , --CallDataSourceID	
                 NULL , --,SequenceNumber	
@@ -31,7 +33,10 @@ INSERT  INTO tblCallHistory
                 NULL ,--,AgentDispositionDesc	
                 NULL ,--,SwitchDispositionDesc	
                 NULL ,--,CommunicationID	
-                DC.DebtContactID --,Z_REF
+                DC.DebtContactID , --,Z_REF
+                1 , --,CreateID
+                {{CurrentSessionID}} --,CreateSessionID: ties each row to this run, as the
+                                     -- tblCorrespondenceHistory insert below already does
         FROM    RC_DEBT_CONTACTS DC
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CONVERT(nvarchar(100), DC.Extended_Debt_Code)
                 LEFT JOIN tblContact C WITH ( NOLOCK ) ON C.Z_REF2 = DC.Multi_Recipient_Key

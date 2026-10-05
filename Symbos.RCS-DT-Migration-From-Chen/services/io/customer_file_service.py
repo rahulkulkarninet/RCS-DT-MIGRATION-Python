@@ -1,8 +1,12 @@
 import os
 import shutil
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Concurrent renames on the share when the staged files are moved.
+MOVE_WORKERS = 8
 
 
 class CustomerFileService:
@@ -78,7 +82,7 @@ class CustomerFileService:
             'invalid_files': [],
             'valid_tables': [],
             'invalid_tables': [],
-            'total_expected_rows': 0,
+            'total_bytes': 0,
         }
 
         for file_path in files:
@@ -90,11 +94,11 @@ class CustomerFileService:
                     if table_name not in validation_result['valid_tables']:
                         validation_result['valid_tables'].append(table_name)
 
-                    try:
-                        row_count = sum(1 for _ in open(file_path)) - 1
-                        validation_result['total_expected_rows'] += row_count
-                    except Exception:
-                        pass
+                    # Size, not a line count: counting lines read every extract
+                    # off the share once more just to print a number, and the
+                    # load reconciles read against inserted rows anyway. The
+                    # size comes from the directory listing, not a stat per file.
+                    validation_result['total_bytes'] += processor.staging_processor.file_size(file_path)
                 else:
                     validation_result['invalid_files'].append(file_path)
 
@@ -158,15 +162,19 @@ class CustomerFileService:
             f'Moving {total_files} file(s) in {len(pending)} group(s) now that all checks are confirmed'
         )
 
-        for entry in pending:
-            self.move_files_to_customer_folder(
-                processor,
-                files=entry['files'],
-                success=entry['success'],
-                rows_processed=entry['rows_processed'],
-                customer_paths=entry['customer_paths'],
-                error_message=entry['error_message'],
-            )
+        # Each move is a rename on the share costing a round trip, so 897 files
+        # one at a time took a minute. Moves are independent of each other.
+        items = [(file_path, entry) for entry in pending for file_path in entry['files']]
+        with ThreadPoolExecutor(max_workers=MOVE_WORKERS, thread_name_prefix='move') as pool:
+            list(pool.map(
+                lambda item: self._move_one(
+                    processor, item[0],
+                    success=item[1]['success'],
+                    rows_processed=item[1]['rows_processed'],
+                    customer_paths=item[1]['customer_paths'],
+                ),
+                items,
+            ))
 
         processor.pending_file_moves = []
         return {'groups': len(pending), 'files': total_files}
@@ -180,26 +188,37 @@ class CustomerFileService:
         customer_paths: Dict[str, Path] = None,
         error_message: str = '',
     ) -> None:
+        for file_path in files:
+            self._move_one(processor, file_path, success=success,
+                           rows_processed=rows_processed, customer_paths=customer_paths)
+
+    def _move_one(
+        self,
+        processor: Any,
+        file_path: str,
+        success: bool,
+        rows_processed: int,
+        customer_paths: Dict[str, Path],
+    ) -> None:
+        """Move one file to processed, no_data or errors. Never raises."""
         if not customer_paths:
             processor.logger.error('Customer paths not provided for file movement')
             return
+        try:
+            source = Path(file_path)
 
-        for file_path in files:
-            try:
-                source = Path(file_path)
+            if success and rows_processed > 0:
+                destination = customer_paths['processed'] / source.name
+                shutil.move(str(source), str(destination))
+                processor.logger.info(f"Moved {source.name} to {customer_paths['processed']}")
+            elif rows_processed == 0:
+                destination = customer_paths['no_data'] / source.name
+                shutil.move(str(source), str(destination))
+                processor.logger.warning(f"Moved no-data file {source.name} to {customer_paths['no_data']}")
+            else:
+                destination = customer_paths['errors'] / source.name
+                shutil.move(str(source), str(destination))
+                processor.logger.error(f"Moved error file {source.name} to {customer_paths['errors']}")
 
-                if success and rows_processed > 0:
-                    destination = customer_paths['processed'] / source.name
-                    shutil.move(str(source), str(destination))
-                    processor.logger.info(f"Moved {source.name} to {customer_paths['processed']}")
-                elif rows_processed == 0:
-                    destination = customer_paths['no_data'] / source.name
-                    shutil.move(str(source), str(destination))
-                    processor.logger.warning(f"Moved no-data file {source.name} to {customer_paths['no_data']}")
-                else:
-                    destination = customer_paths['errors'] / source.name
-                    shutil.move(str(source), str(destination))
-                    processor.logger.error(f"Moved error file {source.name} to {customer_paths['errors']}")
-
-            except Exception as e:
-                processor.logger.error(f"Failed to move {file_path}: {e}")
+        except Exception as e:
+            processor.logger.error(f"Failed to move {file_path}: {e}")

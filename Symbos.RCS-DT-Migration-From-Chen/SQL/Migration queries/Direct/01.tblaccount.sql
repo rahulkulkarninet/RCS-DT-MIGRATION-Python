@@ -102,3 +102,28 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
         ORDER BY
                 RC.Last_Pay DESC
 ;
+
+-- Every later file filters on tblAccount.LoadID = this load, a value the
+-- statistics have never seen until they are refreshed. With async auto-update
+-- (on in test-debtrak) the next files compile against the old histogram: on
+-- 2026-10-02 011 MIMO estimated 209 accounts for 10,719 and took 27s instead of
+-- 0.1s. Refreshing the LoadID-led statistics here, synchronously, means every
+-- later plan sees the real count. Only those statistics, so a large production
+-- tblAccount is not rescanned; names looked up, not hard-coded, because they
+-- differ between environments. Failure only costs plan quality, never the load.
+BEGIN TRY
+    DECLARE @refreshLoadIdStats nvarchar(max) = N'';
+    SELECT  @refreshLoadIdStats += N'UPDATE STATISTICS dbo.tblAccount ' + QUOTENAME(s.name) + N'; '
+    FROM    sys.stats s
+            JOIN sys.stats_columns sc ON sc.object_id = s.object_id
+                                         AND sc.stats_id = s.stats_id
+                                         AND sc.stats_column_id = 1
+            JOIN sys.columns c ON c.object_id = sc.object_id AND c.column_id = sc.column_id
+    WHERE   s.object_id = OBJECT_ID(N'dbo.tblAccount')
+            AND c.name = N'LoadID';
+    IF @refreshLoadIdStats <> N''
+        EXEC sys.sp_executesql @refreshLoadIdStats;
+END TRY
+BEGIN CATCH
+    PRINT 'LoadID statistics on tblAccount not refreshed: ' + ERROR_MESSAGE();
+END CATCH;

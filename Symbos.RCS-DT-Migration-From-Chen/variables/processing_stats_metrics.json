@@ -153,7 +153,8 @@
     "tblCallHistory": {
         "base_config":{
             "table": "tblCallHistory",
-            "filter_by": "CreateSessionID",
+            "filter_by": "account_session",
+            "account_column": "DebtrakAccountID",
             "from_table": "RC_DEBT_CONTACTS"
         },
         "metrics": [
