@@ -62,7 +62,32 @@ CREATE TABLE [dbo].[RC_COMPLAINT_EXTRACT](
 	[Afca_Case_Number] [nvarchar](100) NULL,
 	[Zendesk_Ticket_Number] [nvarchar](100) NULL,
 	[ZID] [nvarchar](100) NULL,
-	[Client_Transfer_Date] [datetime] NULL
+	[Client_Transfer_Date] [datetime] NULL,
+	[Additional_Assistance] [nvarchar](1000) NULL,
+	[AFS_Licensee] [nvarchar](100) NULL,
+	[Resolved] [nvarchar](100) NULL,
+	[Resolved_Date] [datetime] NULL,
+	[Resolution_Details] [nvarchar](max) NULL,
+	[Unauth_Third_Party_Name] [nvarchar](1000) NULL,
+	[Unauth_Third_Party_DOB] [datetime] NULL,
+	[Unauth_Third_Party_Age] [nvarchar](100) NULL,
+	[Unauth_Third_Party_Address] [nvarchar](max) NULL,
+	[Unauth_Third_Party_Email] [nvarchar](1000) NULL,
+	[Unauth_Third_Party_Phone] [nvarchar](100) NULL,
+	[Closure_Reason] [nvarchar](1000) NULL,
+	[Resolution_Method] [nvarchar](100) NULL,
+	[Resolution_Operator] [nvarchar](100) NULL,
+	[Monetary_Compensation] [nvarchar](100) NULL,
+	[Compensation_Amount] [nvarchar](100) NULL,
+	[Cct_Officer_Closing_Complaint] [nvarchar](100) NULL,
+	[Closed_Date] [datetime] NULL,
+	[Audit_Date] [nvarchar](max) NULL,
+	[Audit_Action] [nvarchar](max) NULL,
+	[Audit_Operator] [nvarchar](max) NULL,
+	[Status_History] [nvarchar](max) NULL,
+	[Status_History_Date] [nvarchar](max) NULL,
+	[Document_Sent_Date] [nvarchar](max) NULL,
+	[Document_Code] [nvarchar](max) NULL
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
 

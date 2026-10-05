@@ -1,8 +1,8 @@
 {
   "network_server_env_var": "NETWORK_SERVER",
   "network_share_env_var": "NETWORK_SHARE",
-  "csv_path_template": "//{server}/{share}/Debtrak/",
-  "output_path_template": "//{server}/{share}/Debtrak/Migration/",
+  "csv_path_template": "C:/Documents/Symbos/RCS-DT-Migration/SourceFile-Backup - Test Run/",
+  "output_path_template": "C:/Documents/Symbos/RCS-DT-Migration/SourceFile-Backup - Test Run - Output/",
   "sql_file_path": "SQL/migration queries/*.sql"
 
 }

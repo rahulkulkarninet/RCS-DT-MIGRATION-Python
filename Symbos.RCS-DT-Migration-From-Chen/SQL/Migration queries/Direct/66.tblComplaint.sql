@@ -3,6 +3,83 @@
 -- holds the internal ZID instead (for the child-table joins below), so CMP_Complaint_Number
 -- needed a different home rather than being dropped - ClientReferenceNumber was free and is
 -- the closest semantic fit on tblComplaint.
+--
+-- 2026-10-02: the extract grew from 51 to 76 columns (SM9641 re-issue, SM9595). The blank
+-- 35th header is now CMP_Info_Req_Date, and 25 closure/history columns follow
+-- Client_Transfer_Date. What changed here because of that:
+--
+--   Resolved / ResolvedDate / ClosedDate / ClosedBy now come from the Resolved,
+--   Resolved_Date, Closed_Date and Cct_Officer_Closing_Complaint columns. They used to be
+--   inferred from CMP_Status, which turns out to be the status of the DEBT (COMPLAINTHOLD,
+--   PTPB, NEG, ...) rather than of the complaint: 422 of the 656 SM9641 + SM9595 complaints
+--   carry a Closed Date while CMP_Status is not a CLS/CLOSED code, and every one of them
+--   was migrating as open. The CMP_Status inference survives only as the fallback for a
+--   51-column extract (CG8110), recognised by Audit_Action being NULL - every row of a
+--   76-column extract has an audit trail. ComplaintOutcomeId follows the same signal.
+--
+--   A resolved complaint is a closed complaint (Stacey, Complaints/Hardship Mapping chat,
+--   2026-10-01), so a row that is Resolved = Yes with no Closed Date closes on its
+--   Resolved_Date. A closed complaint is also written the way the application writes one
+--   it closed itself (test-debtrak, 2026-10-02): ComplaintResolutionStageID = Closed and
+--   ActualOutcomeDate alongside ResolvedDate / ClosedDate. Her 2026-09-16 report of cases
+--   coming through as closed but with no dates was these columns being empty.
+--
+--   ResolutionDetails is Resolution_Details. It used to be CMP_Outcome, which is not text
+--   at all but the code of the outcome picked in RCS - see ComplaintOutcomeId below.
+--
+--   New targets: RequestedDate (CMP_Info_Req_Date),
+--   ResolutionMethodId (Resolution_Method), MonetaryCompensationProvided / Amount
+--   (Monetary_Compensation / Compensation_Amount), ComplaintAssistanceId and
+--   AdditionalAssistanceRequired (Additional_Assistance), ComplainantName / Phone / Email
+--   (Unauth_Third_Party_Name / Phone / Email).
+--
+--   Closure_Reason is not carried over as a closure reason: Debtrak has no list for it and
+--   Stacey does not want one (2026-10-02: "RCS ... had outcome reason and closure reason.
+--   outcome reason is enough"). It decides the outcome instead - see ComplaintOutcomeId.
+--
+--   The unauthorised third party goes on the complaint row itself because that is where
+--   the application keeps it: on test-debtrak every Unauthorised Third Party complaint
+--   lodged through the UI has ComplainantName (and Phone / Email when known) filled, and
+--   tblComplaintThirdPartyContact is empty.
+--
+--   TblComplaintHistories now gets the audit trail, the status history and the documents
+--   sent, one row per entry of the pipe-delimited lists - see the last statement.
+--
+--   ClientReferenceNumber takes Westpac_Ref_Number (the Client Reference Number of the
+--   legacy Client Fields box) when the extract has one, CMP_Complaint_Number otherwise.
+--
+--   ComplaintOutcomeId is the ASIC IDR outcome, decided by Closure_Reason exactly as
+--   Stacey set it out in the Complaints/Hardship Mapping chat on 2026-10-02:
+--       ... in our favour                          -> No remedy provided/apology or explanation only
+--       ... in customers favour                    -> Service-based remedy
+--       Referred back to client (not our jurisdiction) -> Referred to another financial firm
+--       Complaint resolved with AFCA in our favour -> No remedy provided/apology or explanation only
+--       Duplicate                                  -> Withdrawn/discontinued
+--       No further contact from customer or rep    -> Withdrawn/discontinued
+--       closed with no closure reason recorded     -> Other remedy
+--   An open complaint has no outcome, as in the application. A closure reason outside this
+--   list is left without an outcome rather than guessed. A 51-column extract has no
+--   Closure_Reason column at all, so its complaints get no outcome either - that is a
+--   missing column, not "no reason recorded", and must not be turned into Other remedy.
+--   Completed / Pending, written before, are inactive on test-debtrak (StatusId 2) and are
+--   no longer used. tblComplaintAsicOutcome gets the same outcome at Position 1, which is
+--   what the application writes when a complaint is closed through the UI.
+--
+--   CMP_Outcome is not used (Stacey, same day: "leave it out"). For the record, it is the
+--   code of the outcome picked in RCS and it does track what RCS lodged in its RG 271
+--   return (report 3. Complaints - ASIC.xlsx; 296 complaints of these clients, each code
+--   on one outcome). That return and the closure-reason rule above disagree on some
+--   complaints - mostly in-customers-favour ones, lodged as No remedy but Service-based
+--   remedy here. The closure-reason rule is the business decision and is what is applied.
+--
+--   AuthorisedRep is AFS_Licensee (Yes / No; Unknown stays NULL). Complaints Data
+--   Mapping.xlsx gives AuthorisedRep as the home of the RG 271 ComplaintAboutRep question.
+--
+-- Staged but deliberately not migrated, each confirmed with Stacey on 2026-10-02:
+-- Resolution_Operator (the operator-error name; she does not want it carried over),
+-- Unauth_Third_Party_DOB / Age / Address, and CMP_Outcome. The Westpac_* client-fields
+-- columns other than the reference number are also not migrated yet: blank for SM9641 and
+-- SM9595, but needed once a banking or insurance client is migrated.
 INSERT  INTO tblComplaint WITH ( ROWLOCK )
         ( AccountId ,
           DateReceived ,
@@ -51,7 +128,19 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
           IsDraft ,
           Classification ,
           IsRestrictedVisibility ,
-          ClientReferenceNumber
+          ClientReferenceNumber ,
+          RequestedDate ,
+          ResolutionMethodId ,
+          MonetaryCompensationProvided ,
+          MonetaryCompensationAmount ,
+          ComplaintAssistanceId ,
+          AdditionalAssistanceRequired ,
+          ComplainantName ,
+          ComplainantPhone ,
+          ComplainantEmail ,
+          ActualOutcomeDate ,
+          ComplaintResolutionStageID ,
+          AuthorisedRep
         )
         SELECT  A.AccountID ,
                 CMP.CMP_Made_Date ,
@@ -75,10 +164,10 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                 SRCLK.ComplaintSourceID ,
                 ORIG.ComplaintOriginatorID ,
                 LVL.ComplaintLevelID ,
-                CASE WHEN CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' THEN 1 ELSE 0 END ,
-                CASE WHEN CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' THEN CMP.CMP_Status_Date END ,
-                CASE WHEN CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' THEN CMP.CMP_Status_Date END ,
-                CASE WHEN CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' THEN 'Migration' END ,
+                CLS.Resolved ,
+                CASE WHEN CLS.Resolved = 1 THEN ISNULL(CMP.Resolved_Date, CLS.ClosedDate) END ,
+                CLS.ClosedDate ,
+                CASE WHEN CLS.ClosedDate IS NOT NULL THEN ISNULL(CMP.Cct_Officer_Closing_Complaint, 'Migration') END ,
                 CAST(CMP.ZID AS NVARCHAR(40)) ,
                 CMP.Afca_Case_Number ,
                 CASE CMP.CMP_Default_Listing_Removed WHEN 'Yes' THEN 1 WHEN 'No' THEN 0 END ,
@@ -91,7 +180,7 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                 CMP.CMP_Enter_date ,
                 CMP.CMP_Impact_Details ,
                 CASE CMP.CMP_Info_Requested WHEN 'Yes' THEN 1 WHEN 'No' THEN 0 END ,
-                CMP.CMP_Outcome ,
+                CMP.Resolution_Details ,
                 CMP.Zendesk_Ticket_Number ,
                 CMP.CMP_Referred_to_Client_Date ,
                 CMP.CMP_AFCA_Date_Required ,
@@ -102,10 +191,35 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                 0 ,
                 'COMPLAINT' ,
                 0 ,
-                CAST(CMP.CMP_Complaint_Number AS NVARCHAR(50))
+                ISNULL(LEFT(CMP.Westpac_Ref_Number, 50), CAST(CMP.CMP_Complaint_Number AS NVARCHAR(50))) ,
+                CMP.CMP_Info_Req_Date ,
+                RESMETH.ResolutionMethodID ,
+                CASE CMP.Monetary_Compensation WHEN 'Yes' THEN 1 WHEN 'No' THEN 0 END ,
+                CASE WHEN CMP.Compensation_Amount IS NULL OR LTRIM(RTRIM(CMP.Compensation_Amount)) = '' THEN NULL
+                     ELSE TRY_CAST(REPLACE(REPLACE(CMP.Compensation_Amount, '$', ''), ',', '') AS DECIMAL(18,2)) END ,
+                ASSIST.ComplaintAssistanceID ,
+                CASE WHEN CMP.Additional_Assistance IS NOT NULL THEN 1 END ,
+                LEFT(CMP.Unauth_Third_Party_Name, 255) ,
+                LEFT(CMP.Unauth_Third_Party_Phone, 30) ,
+                LEFT(CMP.Unauth_Third_Party_Email, 254) ,
+                CASE WHEN CLS.Resolved = 1 THEN ISNULL(CMP.Resolved_Date, CLS.ClosedDate) END ,
+                CASE WHEN CLS.ClosedDate IS NOT NULL THEN STAGE.ComplaintResolutionStageID END ,
+                CASE CMP.AFS_Licensee WHEN 'Yes' THEN 1 WHEN 'No' THEN 0 END
         FROM    RC_COMPLAINT_EXTRACT CMP
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CMP.Extended_Debt_Code
                 INNER JOIN tblComplainant COMPL ON COMPL.Name = CMP.CMP_Source
+                -- Closure comes from the extract columns. LegacyClosed is the old CMP_Status
+                -- inference, applied only to a row with no audit trail, which is what a row
+                -- of a 51-column extract looks like once staged (see the top of this file).
+                CROSS APPLY ( SELECT CASE WHEN CMP.Audit_Action IS NULL
+                                               AND ( CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' )
+                                          THEN 1 ELSE 0 END AS LegacyClosed
+                            ) LEG
+                CROSS APPLY ( SELECT CASE CMP.Resolved WHEN 'Yes' THEN 1 WHEN 'No' THEN 0 ELSE LEG.LegacyClosed END AS Resolved ,
+                                     COALESCE(CMP.Closed_Date,
+                                              CASE WHEN CMP.Resolved = 'Yes' THEN CMP.Resolved_Date END,
+                                              CASE WHEN LEG.LegacyClosed = 1 THEN CMP.CMP_Status_Date END) AS ClosedDate
+                            ) CLS
 
                 OUTER APPLY ( SELECT TOP 1 ComplaintMethodId
                               FROM   tblComplaintMethod
@@ -128,13 +242,29 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                               WHERE  CommunicationPreference = CMP.CMP_Preferred_Contact
                               ORDER BY CommunicationPreferenceID
                             ) COMMPREF
+                -- Closure reason -> ASIC IDR outcome, per Stacey (see the top of this file). The
+                -- extract drops the apostrophe from the label (in customers favour), so it is
+                -- compared without one. Spaces are ignored on the outcome label because it has
+                -- been stored both as "provided/apology" and "provided/ apology"; an active
+                -- row is preferred.
+                CROSS APPLY ( SELECT REPLACE(REPLACE(LTRIM(RTRIM(CMP.Closure_Reason)), '''', ''), NCHAR(8217), '') AS Reason ) CR
                 OUTER APPLY ( SELECT TOP 1 ComplaintOutcomeId
                               FROM   tblComplaintOutcome
-                              WHERE  Outcome = CASE
-                                         WHEN CMP.CMP_Status LIKE '%CLS%' OR CMP.CMP_Status LIKE '%CLOSED%' THEN 'Completed'
-                                         WHEN CMP.CMP_Status LIKE '%HOLD%' THEN 'Pending'
-                                     END
-                              ORDER BY ComplaintOutcomeId
+                              WHERE  REPLACE(Outcome, ' ', '') = REPLACE(CASE
+                                         WHEN CMP.Audit_Action IS NULL THEN NULL
+                                         WHEN CR.Reason IN ( 'Complaint resolved with customer or representative in our favour',
+                                                             'Complaint resolved with AFCA in our favour' )
+                                              THEN 'No remedy provided/apology or explanation only'
+                                         WHEN CR.Reason = 'Complaint resolved with customer or representative in customers favour'
+                                              THEN 'Service-based remedy'
+                                         WHEN CR.Reason = 'Referred back to client as not within our jurisdiction'
+                                              THEN 'Referred to another financial firm'
+                                         WHEN CR.Reason IN ( 'Duplicate', 'No further contact from customer or representative' )
+                                              THEN 'Withdrawn/discontinued'
+                                         WHEN CR.Reason IS NULL AND ( CLS.Resolved = 1 OR CLS.ClosedDate IS NOT NULL )
+                                              THEN 'Other remedy'
+                                     END, ' ', '')
+                              ORDER BY CASE WHEN StatusId = 1 THEN 0 ELSE 1 END, ComplaintOutcomeId
                             ) OUTCM
                 OUTER APPLY ( SELECT TOP 1 ComplaintSourceID
                               FROM   tblComplaintSource
@@ -166,6 +296,21 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                               WHERE  SeverityLevel = CMP.CMP_Severity
                               ORDER BY ComplaintSeverityID
                             ) SEV
+                OUTER APPLY ( SELECT TOP 1 ResolutionMethodID
+                              FROM   tblResolutionMethod
+                              WHERE  Method = CMP.Resolution_Method
+                              ORDER BY ResolutionMethodID
+                            ) RESMETH
+                OUTER APPLY ( SELECT TOP 1 ComplaintAssistanceID
+                              FROM   tblComplaintAssistance
+                              WHERE  AssistanceType = CMP.Additional_Assistance
+                              ORDER BY ComplaintAssistanceID
+                            ) ASSIST
+                OUTER APPLY ( SELECT TOP 1 ComplaintResolutionStageID
+                              FROM   tblComplaintResolutionStage
+                              WHERE  ResolutionStage = 'Closed'
+                              ORDER BY ComplaintResolutionStageID
+                            ) STAGE
         WHERE   A.LoadID = {{LoadID}}
 
                 AND NOT EXISTS ( SELECT 1 FROM tblComplaint X WITH ( NOLOCK )
@@ -174,6 +319,20 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                                         AND X.CreateSessionId = {{CurrentSessionID}} )
 ;
 
+-- The outcome again, as the Position 1 row of the ASIC outcome list. The application keeps
+-- both: ComplaintOutcomeId on the complaint and up to three rows here.
+INSERT  INTO tblComplaintAsicOutcome WITH ( ROWLOCK )
+        ( ComplaintID, ComplaintOutcomeID, Position, StatusId, CreateID, CreateSessionId )
+        SELECT  C.ComplaintId, C.ComplaintOutcomeId, 1, 1, 1, {{CurrentSessionID}}
+        FROM    RC_COMPLAINT_EXTRACT CMP
+                INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CMP.Extended_Debt_Code
+                INNER JOIN tblComplaint C WITH ( NOLOCK ) ON C.AccountId = A.AccountID
+                                                          AND C.ComplaintReference = CAST(CMP.ZID AS NVARCHAR(40))
+                                                          AND C.CreateSessionId = {{CurrentSessionID}}
+        WHERE   A.LoadID = {{LoadID}}
+                AND C.ComplaintOutcomeId IS NOT NULL
+                AND NOT EXISTS ( SELECT 1 FROM tblComplaintAsicOutcome X WITH ( NOLOCK ) WHERE X.ComplaintID = C.ComplaintId )
+;
 
 INSERT  INTO tblComplaintAccountLink WITH ( ROWLOCK )
         ( ComplaintID, AccountID, ClientCode, IsOriginating, LinkedBy, CreateTS )
@@ -238,10 +397,32 @@ INSERT  INTO tblComplaintIssue WITH ( ROWLOCK )
                 AND NOT EXISTS ( SELECT 1 FROM tblComplaintIssue I WITH ( NOLOCK ) WHERE I.ComplaintID = C.ComplaintId AND I.Position = 3 )
 ;
 
-INSERT  INTO TblComplaintHistories WITH ( ROWLOCK )
-        ( ComplaintId, ActionTaken, CreateId, CreateSessionId, CreateTs, StatusId, Action, Status, ChangedBy )
-        SELECT  C.ComplaintId, 'Migrated from RC_COMPLAINT_EXTRACT', 1, {{CurrentSessionID}}, SYSDATETIME(), 1,
-                'Migrated from RC_COMPLAINT_EXTRACT', CMP.CMP_Status, 'Migration'
+-- History. The extract carries three families of pipe-delimited lists, paired by position:
+--   Audit_Action / Audit_Date / Audit_Operator  -> Action / CreateTs / ChangedBy
+--   Status_History / Status_History_Date        -> Status (+ PreviousStatus) / CreateTs
+--   Document_Code / Document_Sent_Date          -> ActionTaken / CreateTs
+-- Each entry becomes one row, under the Category the application files that kind of row
+-- in: Audit History, Status History or Document Sent (Action = DocumentSent, the name its
+-- own acknowledgement job writes). Documents sent have no table of their own on the target
+-- - tblComplaintDocumentChecklist tracks documents received FROM the client.
+--
+-- The source dates carry no time of day, so rows of one day share a CreateTs; the ORDER BY
+-- makes ComplaintHistoryId follow source order within the day. An entry whose date is
+-- missing or unreadable falls back to CMP_Enter_date rather than being skipped.
+--
+-- The closing Migrated from RC_COMPLAINT_EXTRACT row is unchanged. It is still the only
+-- place CMP_Status is kept, and for a 51-column extract it is the only row written.
+WITH MIGRATED AS (
+        SELECT  C.ComplaintId ,
+                CMP.CMP_Status ,
+                CMP.CMP_Enter_date ,
+                CMP.Audit_Action ,
+                CMP.Audit_Date ,
+                CMP.Audit_Operator ,
+                CMP.Status_History ,
+                CMP.Status_History_Date ,
+                CMP.Document_Code ,
+                CMP.Document_Sent_Date
         FROM    RC_COMPLAINT_EXTRACT CMP
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CMP.Extended_Debt_Code
                 INNER JOIN tblComplaint C WITH ( NOLOCK ) ON C.AccountId = A.AccountID
@@ -249,4 +430,71 @@ INSERT  INTO TblComplaintHistories WITH ( ROWLOCK )
                                                           AND C.CreateSessionId = {{CurrentSessionID}}
         WHERE   A.LoadID = {{LoadID}}
                 AND NOT EXISTS ( SELECT 1 FROM TblComplaintHistories H WITH ( NOLOCK ) WHERE H.ComplaintId = C.ComplaintId )
+),
+HISTORY AS (
+        SELECT  M.ComplaintId ,
+                1 AS Kind ,
+                ACT.ordinal AS Seq ,
+                COALESCE(TRY_CONVERT(DATETIME2, LTRIM(RTRIM(DT.value)), 23), M.CMP_Enter_date, SYSDATETIME()) AS CreateTs ,
+                CAST(LTRIM(RTRIM(ACT.value)) AS NVARCHAR(MAX)) AS ActionTaken ,
+                CAST(LEFT(LTRIM(RTRIM(ACT.value)), 50) AS NVARCHAR(50)) AS Action ,
+                CAST(NULL AS NVARCHAR(50)) AS Status ,
+                CAST(NULL AS NVARCHAR(50)) AS PreviousStatus ,
+                CAST(ISNULL(NULLIF(LTRIM(RTRIM(OP.value)), ''), 'Migration') AS NVARCHAR(255)) AS ChangedBy ,
+                CAST('Audit History' AS NVARCHAR(30)) AS Category
+        FROM    MIGRATED M
+                CROSS APPLY STRING_SPLIT(M.Audit_Action, '|', 1) ACT
+                OUTER APPLY ( SELECT S.value FROM STRING_SPLIT(M.Audit_Date, '|', 1) S WHERE S.ordinal = ACT.ordinal ) DT
+                OUTER APPLY ( SELECT S.value FROM STRING_SPLIT(M.Audit_Operator, '|', 1) S WHERE S.ordinal = ACT.ordinal ) OP
+        WHERE   LTRIM(RTRIM(ACT.value)) <> ''
+        UNION ALL
+        SELECT  M.ComplaintId ,
+                2 ,
+                ST.ordinal ,
+                COALESCE(TRY_CONVERT(DATETIME2, LTRIM(RTRIM(DT.value)), 23), M.CMP_Enter_date, SYSDATETIME()) ,
+                CAST('Status changed to ' + LTRIM(RTRIM(ST.value)) AS NVARCHAR(MAX)) ,
+                CAST('Status Changed' AS NVARCHAR(50)) ,
+                CAST(LEFT(LTRIM(RTRIM(ST.value)), 50) AS NVARCHAR(50)) ,
+                CAST(LEFT(LTRIM(RTRIM(PREV.value)), 50) AS NVARCHAR(50)) ,
+                CAST('Migration' AS NVARCHAR(255)) ,
+                CAST('Status History' AS NVARCHAR(30))
+        FROM    MIGRATED M
+                CROSS APPLY STRING_SPLIT(M.Status_History, '|', 1) ST
+                OUTER APPLY ( SELECT S.value FROM STRING_SPLIT(M.Status_History_Date, '|', 1) S WHERE S.ordinal = ST.ordinal ) DT
+                OUTER APPLY ( SELECT S.value FROM STRING_SPLIT(M.Status_History, '|', 1) S WHERE S.ordinal = ST.ordinal - 1 ) PREV
+        WHERE   LTRIM(RTRIM(ST.value)) <> ''
+        UNION ALL
+        SELECT  M.ComplaintId ,
+                3 ,
+                DOC.ordinal ,
+                COALESCE(TRY_CONVERT(DATETIME2, LTRIM(RTRIM(DT.value)), 23), M.CMP_Enter_date, SYSDATETIME()) ,
+                CAST('Document sent: ' + LTRIM(RTRIM(DOC.value)) AS NVARCHAR(MAX)) ,
+                CAST('DocumentSent' AS NVARCHAR(50)) ,
+                CAST(NULL AS NVARCHAR(50)) ,
+                CAST(NULL AS NVARCHAR(50)) ,
+                CAST('Migration' AS NVARCHAR(255)) ,
+                CAST('Document Sent' AS NVARCHAR(30))
+        FROM    MIGRATED M
+                CROSS APPLY STRING_SPLIT(M.Document_Code, '|', 1) DOC
+                OUTER APPLY ( SELECT S.value FROM STRING_SPLIT(M.Document_Sent_Date, '|', 1) S WHERE S.ordinal = DOC.ordinal ) DT
+        WHERE   LTRIM(RTRIM(DOC.value)) <> ''
+        UNION ALL
+        SELECT  M.ComplaintId ,
+                4 ,
+                1 ,
+                SYSDATETIME() ,
+                CAST('Migrated from RC_COMPLAINT_EXTRACT' AS NVARCHAR(MAX)) ,
+                CAST('Migrated from RC_COMPLAINT_EXTRACT' AS NVARCHAR(50)) ,
+                CAST(LEFT(M.CMP_Status, 50) AS NVARCHAR(50)) ,
+                CAST(NULL AS NVARCHAR(50)) ,
+                CAST('Migration' AS NVARCHAR(255)) ,
+                CAST(NULL AS NVARCHAR(30))
+        FROM    MIGRATED M
+)
+INSERT  INTO TblComplaintHistories WITH ( ROWLOCK )
+        ( ComplaintId, ActionTaken, CreateId, CreateSessionId, CreateTs, StatusId, Action, Status, PreviousStatus, ChangedBy, Category )
+        SELECT  H.ComplaintId, H.ActionTaken, 1, {{CurrentSessionID}}, H.CreateTs, 1,
+                H.Action, H.Status, H.PreviousStatus, H.ChangedBy, H.Category
+        FROM    HISTORY H
+        ORDER BY H.ComplaintId, H.CreateTs, H.Kind, H.Seq
 ;
