@@ -211,17 +211,9 @@ CREATE TABLE [dbo].[RC_HARDSHIP_EXTRACT](
 	[Debtor_2_Employer_Address_State] [nvarchar](1000) NULL,
 	[NAB_Close_Request_Operator] [nvarchar](1000) NULL,
 	[Archive_Comment] [nvarchar](max) NULL,
-	[Moratorium_Expiry_Email_Sent_Date] [datetime] NULL
+	[Moratorium_Expiry_Email_Sent_Date] [datetime] NULL,
+	[Archive_Date] [datetime] NULL
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
 
 
-
--- Join-key indexes for the migration queries. The staging tables are bulk
--- loaded and then joined per row by the Direct/*.sql steps; without these the
--- optimiser has only a heap to work with and falls back to rescanning the whole
--- table once per outer row. TRUNCATE preserves indexes, so these only need to be
--- recreated when this script rebuilds the table.
-CREATE NONCLUSTERED INDEX [IX_RC_HARDSHIP_EXTRACT_Extended_Debt_Code]
-    ON [dbo].[RC_HARDSHIP_EXTRACT] ([Extended_Debt_Code])
-GO
