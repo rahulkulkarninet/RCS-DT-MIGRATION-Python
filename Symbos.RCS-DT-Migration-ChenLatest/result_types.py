@@ -157,50 +157,6 @@ class ClosureReasonCheckResult(TypedDict):
     invalid_reasons: List[str]
 
 
-class HardshipStatusUpdateResult(TypedDict, total=False):
-    success: bool
-    mapping_file: str
-    fallback_label: str
-    fallback_applied: bool
-    total_codes_loaded: int
-    duplicate_codes_skipped: int
-    resolved_statuses: int
-    rows_updated: int
-    rows_defaulted: int
-    defaulted_values: List[str]
-    invalid_statuses: List[str]
-    status_message: str
-    error: str
-
-
-class HardshipStatusCheckResult(TypedDict):
-    status_message: str
-    defaulted_values: List[str]
-    invalid_statuses: List[str]
-
-
-class HardshipCauseUpdateResult(TypedDict, total=False):
-    success: bool
-    mapping_file: str
-    fallback_label: str
-    fallback_applied: bool
-    total_codes_loaded: int
-    duplicate_codes_skipped: int
-    resolved_causes: int
-    rows_updated: int
-    rows_defaulted: int
-    defaulted_values: List[str]
-    invalid_causes: List[str]
-    status_message: str
-    error: str
-
-
-class HardshipCauseCheckResult(TypedDict):
-    status_message: str
-    defaulted_values: List[str]
-    invalid_causes: List[str]
-
-
 class CostUpdateResult(TypedDict, total=False):
     success: bool
     mapping_file: str

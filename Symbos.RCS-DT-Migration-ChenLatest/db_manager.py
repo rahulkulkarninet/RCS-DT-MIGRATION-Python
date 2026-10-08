@@ -210,12 +210,7 @@ class DatabaseHelper:
         # a previous environment's credential over. load_dotenv(override=True)
         # replaces what the new file defines, but says nothing about keys the new
         # file omits.
-        # USERNAME is deliberately not cleared here: config['USERNAME'] below is
-        # hardcoded to '' and never read from the environment, but getpass.getuser()
-        # elsewhere in the process falls back to it (via LOGNAME/USER/LNAME/USERNAME)
-        # on Windows machines that don't set the other three, and clearing it with
-        # nothing to restore it breaks that fallback for the rest of the run.
-        env_vars_to_clear = ['SERVER', 'DATABASE',
+        env_vars_to_clear = ['SERVER', 'DATABASE', 'USERNAME',
                              'CLIENT_ID', 'CLIENT_SECRET',
                              'BCP_AUTH', 'BCP_DSN', 'BCP_USERNAME',
                              'ARCHIVE_DATABASE',
@@ -248,10 +243,6 @@ class DatabaseHelper:
             'BCP_DSN': os.getenv('BCP_DSN', ''),
             'CLIENT_ID': os.getenv('CLIENT_ID', ''),
             'CLIENT_SECRET': os.getenv('CLIENT_SECRET', ''),
-            # Temporary, for local test runs: literal folders that replace the
-            # //{server}/{share}/ UNC templates (see process_staging._load_file_paths).
-            'CSV_PATH': os.getenv('CSV_PATH', ''),
-            'OUTPUT_PATH': os.getenv('OUTPUT_PATH', ''),
             # Long-lived copy of the RC_* staging tables, on the same server as
             # DATABASE. Named per environment - the names differ, so every env
             # file sets this rather than relying on the fallback.

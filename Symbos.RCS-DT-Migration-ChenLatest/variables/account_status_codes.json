@@ -58,7 +58,9 @@
   "Liquidator / Administrator Appointed": [
     "LIQ"
   ],
-  "Deregistered Company": [],
+  "Deregistered Company": [
+    "DEREG"
+  ],
   "New File": [
     "NEWFILE",
     "NEWF",
@@ -74,9 +76,7 @@
   "Treatment Allocated": [
     "TREATMENT",
     "TREATHOLD",
-    "TACT1",
-    "TREATMENTHOLD",
-    "INVS"
+    "TACT1"
   ],
   "Treatment – End of Process": [
     "TREATEOP",
@@ -101,9 +101,7 @@
     "CALL2",
     "CALL",
     "CALL2A",
-    "PHONE2A7",
-    "ASSIGNED",
-    "OVERSEAS"
+    "PHONE2A7"
   ],
   "Unable to Contact": [
     "UNABCON",
@@ -180,10 +178,11 @@
     "FACTORED"
   ],
   "Complaint Lodged": [
-    "COMPLAINT",
+    "COMPLAINT"
+  ],
+  "Complaint – 14 Day Hold": [
     "COMPLAINTHOLD"
   ],
-  "Complaint – 14 Day Hold": [],
   "Deceased – Pending Confirmation": [
     "DEC",
     "PDECEASED"
@@ -253,17 +252,16 @@
     "CLHOLD",
     "HOLDS",
     "TREATPAS",
+    "TREATMENTHOLD",
     "AGEEXCLUSION",
-    "UNCONTACT"
+    "INVS"
   ],
   "Awaiting Instructions – Client": [
     "AWIC",
     "HOLDK",
     "AWCI",
     "Invoice",
-    "AWCIR",
-    "PARTW/OF",
-    "SETDPP"
+    "AWCIR"
   ],
   "Awaiting Instructions – Legal": [
     "AWIL"
@@ -291,7 +289,8 @@
     "FRAUD"
   ],
   "Debtor Living Overseas": [
-    "OSEAS"
+    "OSEAS",
+    "OVERSEAS"
   ],
   "Low Balance": [
     "LOWBAL"
@@ -310,10 +309,7 @@
   "Recommended Close to Client": [
     "RECCLOSE",
     "CTCRC",
-    "CLRECCL",
-    "CLCR",
-    "DUP",
-    "RECALLD"
+    "CLRECCL"
   ],
   "Client Escalation": [
     "CTCE"
@@ -524,13 +520,11 @@
     "W/OFF",
     "DUPCLAIM",
     "DUPLICATE",
-    "UNEC"
+    "UNEC",
+    "PARTW/OF"
   ],
   "Withdrawn by Client": [
     "W/DRAWN",
     "WDC"
-  ],
-  "Deregistered Bus/Co": [
-    "DEREG"
   ]
 }

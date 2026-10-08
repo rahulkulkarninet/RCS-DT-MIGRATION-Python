@@ -296,10 +296,6 @@
                 "RelationshipID_ThirdPartyInsurer": {
                     "default": 40,
                     "data_type": "int"
-                },
-                "Treatment_MaxAgeDays": {
-                    "default": 365,
-                    "data_type": "int"
                 }
             }
         }

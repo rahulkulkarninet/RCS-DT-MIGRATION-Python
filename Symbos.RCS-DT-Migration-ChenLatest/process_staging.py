@@ -393,14 +393,9 @@ class StagingProcessor:
             output_template = path_vars.get('OUTPUT_PATH_TEMPLATE', '//{server}/{share}/Debtrak/Migration/')
             sql_path = path_vars.get('SQL_FILE_PATH', 'SQL/migration queries/*.sql')
 
-            # CSV_PATH/OUTPUT_PATH in the environment file are literal overrides for
-            # local runs, used instead of the //{server}/{share}/ UNC template.
-            csv_override = self.db_helper.config.get('CSV_PATH') if self.db_helper else None
-            output_override = self.db_helper.config.get('OUTPUT_PATH') if self.db_helper else None
-
             # Resolve and store file paths
-            self.file_paths['csv'] = csv_override or csv_template.format(server=network_server, share=network_share)
-            self.file_paths['output'] = output_override or output_template.format(server=network_server, share=network_share)
+            self.file_paths['csv'] = csv_template.format(server=network_server, share=network_share)
+            self.file_paths['output'] = output_template.format(server=network_server, share=network_share)
             self.file_paths['sql'] = sql_path
 
         except Exception as e:

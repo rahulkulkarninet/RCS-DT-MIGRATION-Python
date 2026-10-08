@@ -12,12 +12,6 @@ from .customer_closure_reason_workflow_service import (
 )
 from .customer_cost_workflow_service import CustomerCostWorkflowService
 from .customer_frequency_workflow_service import CustomerFrequencyWorkflowService
-from .customer_hardship_cause_workflow_service import (
-    CustomerHardshipCauseWorkflowService,
-)
-from .customer_hardship_status_workflow_service import (
-    CustomerHardshipStatusWorkflowService,
-)
 from .customer_incident_type_workflow_service import CustomerIncidentTypeWorkflowService
 from .customer_related_party_type_workflow_service import (
     CustomerRelatedPartyTypeWorkflowService,
@@ -35,8 +29,6 @@ __all__ = [
     "CustomerClosureReasonWorkflowService",
     "CustomerCostWorkflowService",
     "CustomerFrequencyWorkflowService",
-    "CustomerHardshipCauseWorkflowService",
-    "CustomerHardshipStatusWorkflowService",
     "CustomerIncidentTypeWorkflowService",
     "CustomerRelatedPartyTypeWorkflowService",
     "CustomerSQLWorkflowService",
