@@ -1,0 +1,11 @@
+{
+  "_comment": "Maps RC_COMPLAINT_EXTRACT.CMP_Source to tblComplainant.Name. Keys are the target labels that exist in tblComplainant; each list holds the source values that should become that label. default_for_unmapped is not cosmetic here: 66.tblComplaint.sql joins tblComplainant with an INNER JOIN, so any CMP_Source still unresolved when the SQL runs drops that complaint from the migration silently. Keep a default set to a label that really exists in tblComplainant. SM9641 (dev-debtrak, 15-Sep-2026): Customer 62, Client 6, Unauthorised Third Party 1 all match exactly; AFCA 1 does not and currently takes the default. Confirm with the BA whether AFCA should instead map to 'Customer via rep'.",
+  "default_for_unmapped": "Unknown",
+  "mapping": {
+    "Client": [],
+    "Customer": [],
+    "Customer via rep": [],
+    "Unauthorised Third Party": [],
+    "Unknown": []
+  }
+}

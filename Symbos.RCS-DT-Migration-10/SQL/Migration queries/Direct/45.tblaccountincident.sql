@@ -1,0 +1,33 @@
+-- Incident Details
+INSERT  INTO tblAccountIncident WITH ( ROWLOCK )
+        ( AccountID ,
+          IncidentTypeID ,
+          IncidentDate ,
+          IncidentDescription ,
+          AddressID ,
+          CreateID ,
+          CreateSessionID ,
+          CreateTS ,
+          StatusID ,
+          LoadID,
+          Z_DB
+        )
+		SELECT
+	        A.AccountID,
+	        AE.Cause_Description_IncidentTypeID, --IncidentTypeID, set by incident_type_service.py
+	        I.IncidentDate,
+	        LEFT(I.IncidentDescription, 500),
+	        Addr.AddressID,
+	        1,
+	        {{CurrentSessionID}},
+	        GETDATE(),
+	        1,
+	        {{LoadID}},
+			I.FullDebtCode
+
+        FROM tblAccount A
+	        JOIN RC_ACCOUNT_EXTRACT AE ON CONVERT(nvarchar(100), AE.Full_Debt_Code) = A.AccountNumberPrevious
+	        JOIN RC_DRINSURANCE I ON CONVERT(nvarchar(100), I.FullDebtCode) = A.AccountNumberPrevious 
+	        JOIN tblAddress Addr ON Addr.z_ref = CAST(AE.Short_Debt_Code AS VARCHAR) + '*INC'
+        WHERE A.loadid = {{LoadID}}
+        AND Addr.loadid = {{LoadID}}

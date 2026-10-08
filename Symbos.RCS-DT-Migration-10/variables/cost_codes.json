@@ -1,0 +1,162 @@
+{
+  "_comment": "Cost codes in RC_COSTS_EXTRACT. Unlike the other code-mapping domains the source code is not a value in a column - it is part of the column NAME, one 'Chg_<code>' per cost type on a single wide row per debtor. So nothing is rewritten in place: cost_service.py unpivots the charge columns into RC_STAGING_COSTS with CostTypeID and MasterCostID already resolved, and 51.tblcosts.sql reads that. Otherwise the shape is the same as account_status_codes.json - 'cost_types' is {DT label: [legacy codes]}. Keys must exist in tblCostType.CostType and 'master_costs' keys in tblMasterCost.MasterCost; matching ignores case, whitespace and punctuation. A code in 'master_costs' overrides 'default_master_cost'.",
+  "_comment_mercantile": "The 31 codes under MERCANTILE are NOT a judgement that they belong there - they are the pre-existing behaviour preserved. CSRC_CostTypeMapping mapped all 56 of its codes to CostTypeIDDestination 1 (MERCANTILE) regardless of what the cost was, so leaving them there migrates exactly what today's migration migrates. They await business sign-off. The other 25 were re-categorised because the RCS fee name has one unmistakable tblCostType counterpart (COURT FEE -> COURT FEES, SERVICE FEE INDIVIDUAL -> INDIVIDUAL SERVICE FEES, and so on). Codes deliberately left at MERCANTILE because they had two or more plausible targets, or none: ADM (ADMIN FEE RECOVERY vs ACO ADMIN), BAI (bailiff/SHERIFFS is inference, not a name), HEA, SEC, PRE, AUD, BAR, AFF (PROFESSIONAL COSTS vs SOLICITORS COSTS), AHF, LIST, ARC (ADMIN FEE RECOVERY vs RECOVERY FEE vs COMMISSION), SERV, SUND, and DEBR, DEBW, CLC, SAP, UIL, which have no tblCostType counterpart at all.",
+  "_comment_undecided": "A code listed in neither 'cost_types' nor 'not_costs' is UNDECIDED: it migrates nothing, and if its Chg_ column carries money the check step names it and stops the customer rather than dropping the charge silently. IBS and IAJ are deliberately left undecided - they were absent from CSRC_CostTypeMapping and carry no charge in any load seen so far, so there is nothing to base a cost type on. The same is true of every Chg_ column not named here at all: IBJ, ACOM, INT, BCOM, PMA, LATE, AKF, EST, BRE and DAR.",
+  "default_master_cost": "Default Master Cost",
+  "cost_types": {
+    "MERCANTILE": [
+      "ADM",
+      "LET",
+      "POR",
+      "MPL",
+      "BNK",
+      "LOC",
+      "FCA",
+      "REP",
+      "SEC",
+      "COU",
+      "PRE",
+      "BAR",
+      "CMO",
+      "HEA",
+      "AFF",
+      "COJ",
+      "ADR",
+      "ADN",
+      "BAI",
+      "DEBR",
+      "DEBW",
+      "SERV",
+      "SUND",
+      "UIL",
+      "PHC",
+      "AHF",
+      "LIST",
+      "CLC",
+      "AUD",
+      "ARC",
+      "SAP"
+    ],
+    "LEGAL": [
+      "VLC",
+      "VLD",
+      "ILC",
+      "ILD"
+    ],
+    "SOLICITORS COSTS": [
+      "SSC",
+      "ESC",
+      "SCN",
+      "SCOS",
+      "STB",
+      "SEB"
+    ],
+    "COURT FEES": [
+      "CRT"
+    ],
+    "REGISTRATION FEES": [
+      "REG"
+    ],
+    "SEARCH FEES": [
+      "SHR",
+      "SHN"
+    ],
+    "BUSINESS SEARCH FEE": [
+      "SHRF"
+    ],
+    "COMPANY SEARCH FEE": [
+      "SHRC"
+    ],
+    "SERVICE FEES": [
+      "SRV",
+      "ATS",
+      "ADS"
+    ],
+    "INDIVIDUAL SERVICE FEES": [
+      "SRVI"
+    ],
+    "COMPANY SERVICE FEES": [
+      "SRVC"
+    ],
+    "SERVICE KMS": [
+      "KIL"
+    ],
+    "INTEREST": [
+      "ICS",
+      "ICL"
+    ],
+    "OTHER FEES": [
+      "OTH"
+    ],
+    "ADMIN FEE RECOVERY": [
+      "COL"
+    ]
+  },
+  "master_costs": {
+    "Collection Costs": [
+      "COL"
+    ]
+  },
+  "not_costs": {
+    "DEB": "The debt total carried on the costs extract, not a cost. Principals are migrated from RC_DRDBINVOICE by 03.tblprincipal.sql, so charging this as a cost would double the balance. It carries a value on nearly every row, which is why it has to be excluded explicitly rather than left undecided."
+  },
+  "_comment_descriptions": "code_descriptions is the RCS description of each code, generated from CSRC_CostTypeMapping.CostType by tools/build_cost_codes.py and ignored by cost_service.py. It is here so the codes awaiting business sign-off can be reviewed without opening the database - 'AHF' means nothing on its own, 'AGENCY HANDLING FEE' does. Regenerate with `python tools/build_cost_codes.py <env> --write`; that never changes a cost type or master cost already recorded above.",
+  "code_descriptions": {
+    "ADM": "ADMIN FEE",
+    "ADN": "ADVERTISING - NON REFUNDABLE",
+    "ADR": "ADVERTISING - REFUNDABLE",
+    "ADS": "ADDITIONAL SERVICE FEE",
+    "AFF": "AFFIDAVITS",
+    "AHF": "AGENCY HANDLING FEE",
+    "ARC": "AGENCY REIMBURSEMENT CHARGE",
+    "ATS": "ATTEMPTED SERVICE FEE",
+    "AUD": "AUDIT FEE",
+    "BAI": "BAILIFF FEE",
+    "BAR": "BARRISTER FEE",
+    "BNK": "BANK FEES",
+    "CLC": "DEBT - CLIENT COSTS",
+    "CMO": "CONDUCT MONEY",
+    "COJ": "CERTIFICATE OF JUDGMENT",
+    "COU": "COURIER CHARGE",
+    "CRT": "COURT FEE",
+    "DEBR": "DEBT - RATES",
+    "DEBW": "DEBT - WATER",
+    "ESC": "EXTERNAL SOLICITOR COST",
+    "FCA": "FIELD CALL",
+    "HEA": "HEARING FEE",
+    "ICL": "CLIENT INTEREST CHARGES",
+    "ICS": "INTEREST - CLIENT SINCE LOADED",
+    "ILC": "LEGAL COSTS I/STATE",
+    "ILD": "LEGAL DISBURSEMENTS I/STATE",
+    "KIL": "KILOMETER FEE",
+    "LET": "LETTER COSTS",
+    "LIST": "COLLECTION LISTING FEE",
+    "LOC": "LOCATION FEE",
+    "MPL": "MISC. PRE-LEGAL COST",
+    "OTH": "OTHER COSTS",
+    "PHC": "PHONE CALL COSTS",
+    "POR": "POLICE REPORT",
+    "PRE": "PREPARATION FEE",
+    "REG": "REGISTRATION I/STATE ORDER",
+    "REP": "REPOSSESSION COST",
+    "SAP": "TUQLD SAP DEBT",
+    "SCN": "SOLICITOR COSTS - NON-RECOV.",
+    "SCOS": "SOLICITOR COSTS",
+    "SEB": "SOLICITOR EVENT BILLING CHARGES",
+    "SEC": "SECRETARIAL FEE",
+    "SERV": "SERVICES",
+    "SHN": "SEARCH FEE - NONRECOVERABLE",
+    "SHR": "SEARCH FEE - RECOVERABLE",
+    "SHRC": "SEARCH FEE - LEGAL - COMPANY",
+    "SHRF": "SEARCH FEE - LEGAL - FIRM",
+    "SRV": "SERVICE FEE",
+    "SRVC": "SERVICE FEE COMPANY",
+    "SRVI": "SERVICE FEE INDIVIDUAL",
+    "SSC": "SOLICITOR SCALE COST",
+    "STB": "SOLICITOR TIME BILLING CHARGES",
+    "SUND": "SUNDRIES",
+    "UIL": "UNINSURED LOSS",
+    "VLC": "LEGAL COSTS - VIC",
+    "VLD": "LEGAL DISBURSEMENTS VIC"
+  }
+}

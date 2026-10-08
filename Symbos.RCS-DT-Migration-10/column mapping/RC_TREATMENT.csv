@@ -1,0 +1,14 @@
+db_col_name,csv_col_name
+Full_Debt_Code,Full_Debt_Code
+Client_Code,Client_Code
+Client_Group,Client_Group
+Short_Debt_Code,Short_Debt_Code
+Account_No,Account_No
+Treatment_Date,Treatment_Date
+Treatment_Code,Treatment_Code
+Treatment_Description,Treatment_Description
+Treatment_Step,Treatment_Step
+Treatment_Type,Treatment_Type
+Treatment_Result_Code,Treatment_Result_Code
+Treatment_Result,Treatment_Result
+ZID,ZID

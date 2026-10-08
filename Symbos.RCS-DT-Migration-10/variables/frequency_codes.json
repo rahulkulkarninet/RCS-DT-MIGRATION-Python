@@ -1,0 +1,8 @@
+{
+  "Weekly": ["W"],
+  "Fortnightly": ["F"],
+  "Monthly": ["M"],
+  "Bi-Monthly": ["BM"],
+  "Quarterly": ["Q"],
+  "Yearly": ["Y"]
+}

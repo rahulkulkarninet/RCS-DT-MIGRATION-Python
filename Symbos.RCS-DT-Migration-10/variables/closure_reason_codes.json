@@ -1,0 +1,13 @@
+{
+  "default_for_unmapped": "Other Reason - Please see notes",
+  "mapping": {
+    "Paid In Full": ["PIF"],
+    "Other Reason - Please see notes": ["OTH", "REC", "RECALL", "FRD", "NOC", "INS", "CPQ", "ERR", "WBC"],
+    "Client Instructions": ["CRQ"],
+    "Deceased": ["DEC"],
+    "Bankrupt/NAP or Liquidation": ["BKT"],
+    "Settled For Less": ["SFL"],
+    "Uneconomical to pursue": ["UNEC"],
+    "Loaded In Error": ["LOERR"]
+  }
+}
