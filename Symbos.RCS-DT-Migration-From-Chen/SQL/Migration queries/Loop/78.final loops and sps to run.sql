@@ -59,22 +59,39 @@ WHILE ( @arrangementloopIndex <= @arrangementmaxIndex )
              AND @InstalmentAmt IS NOT NULL
            )
             BEGIN
+                -- StatusID/IsPaid/payment columns mirror spGen_ArrangementScheduleSave.
+                -- spArrangementScheduleSelectByArrangementID (used by the arrangement
+                -- screen) filters StatusID = 1, so rows without it never display.
                 INSERT  INTO tblArrangementSchedule
                         ( ArrangementID ,
                           InstallmentAmount ,
                           InstallmentDue ,
                           ArrangementTotalDueToDate ,
                           CreateID ,
-                          CreateTS
+                          CreateSessionID ,
+                          CreateTS ,
+                          StatusID ,
+                          IsPaid ,
+                          BankTransactionMethodID ,
+                          BankAccountID ,
+                          PaymentTokenID
                         )
                         SELECT  @currArrangementID ,
                                 CONVERT(DECIMAL(18, 2), REPLACE(installmentAmt.Line,'''','')) ,
                                 CONVERT(DATE, REPLACE(installmentDate.Line,'''',''), 120) ,
                                 CONVERT(DECIMAL(18, 2), REPLACE(installmentAmt.Line,'''','')) ,
                                 1 ,
-                                GETDATE()
+                                {{CurrentSessionID}} ,
+                                GETDATE() ,
+                                1 ,
+                                0 ,
+                                ARR.BankTransactionMethodID ,
+                                ARR.BankAccountID ,
+                                ARR.PaymentTokenID
                         FROM    dbo.fnSplitTextIntoTable(@InstalmentAmt, '|') installmentAmt
                                 LEFT JOIN dbo.fnSplitTextIntoTable(@InstalmentDate, '|') installmentDate ON installmentAmt.[LineNo] = installmentDate.[LineNo]
+                                CROSS JOIN tblArrangement ARR WITH ( NOLOCK )
+                        WHERE   ARR.ArrangementID = @currArrangementID
             END
         IF ( @EmailReminder = 'Y' )
             BEGIN
@@ -214,22 +231,39 @@ WHILE ( @arLoopIndex <= @arMaxIndex )
              AND @arInstalmentAmt IS NOT NULL
            )
             BEGIN
+                -- StatusID/IsPaid/payment columns mirror spGen_ArrangementScheduleSave.
+                -- spArrangementScheduleSelectByArrangementID (used by the arrangement
+                -- screen) filters StatusID = 1, so rows without it never display.
                 INSERT  INTO tblArrangementSchedule
                         ( ArrangementID ,
                           InstallmentAmount ,
                           InstallmentDue ,
                           ArrangementTotalDueToDate ,
                           CreateID ,
-                          CreateTS
+                          CreateSessionID ,
+                          CreateTS ,
+                          StatusID ,
+                          IsPaid ,
+                          BankTransactionMethodID ,
+                          BankAccountID ,
+                          PaymentTokenID
                         )
                         SELECT  @currArID ,
                                 CONVERT(DECIMAL(18, 2), REPLACE(installmentAmt.Line,'''','')) ,
                                 CONVERT(DATE, REPLACE(installmentDate.Line,'''',''), 120) ,
                                 CONVERT(DECIMAL(18, 2), REPLACE(installmentAmt.Line,'''','')) ,
                                 1 ,
-                                GETDATE()
+                                {{CurrentSessionID}} ,
+                                GETDATE() ,
+                                1 ,
+                                0 ,
+                                ARR.BankTransactionMethodID ,
+                                ARR.BankAccountID ,
+                                ARR.PaymentTokenID
                         FROM    dbo.fnSplitTextIntoTable(@arInstalmentAmt, '|') installmentAmt
                                 LEFT JOIN dbo.fnSplitTextIntoTable(@arInstalmentDate, '|') installmentDate ON installmentAmt.[LineNo] = installmentDate.[LineNo]
+                                CROSS JOIN tblArrangement ARR WITH ( NOLOCK )
+                        WHERE   ARR.ArrangementID = @currArID
             END
         IF ( @arEmailReminder = 'Y' )
             BEGIN

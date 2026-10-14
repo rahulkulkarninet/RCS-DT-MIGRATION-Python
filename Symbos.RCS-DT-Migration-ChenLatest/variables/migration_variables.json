@@ -41,7 +41,7 @@
                 },
                 "BankAccountID_DefaultHost": {
                     "column": "BankAccountID_DefaultHost",
-                    "default": 95,
+                    "default": 77,
                     "data_type": "int"
                 },
                 "DefaultCountryID": {

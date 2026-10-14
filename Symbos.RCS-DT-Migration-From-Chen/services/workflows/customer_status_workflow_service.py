@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from result_types import StatusCheckResult, StatusUpdateResult
-from status_service import StatusService
+from status_service import MAP_TABLE, StatusService
 
 
 class CustomerStatusWorkflowService:
@@ -64,6 +64,13 @@ class CustomerStatusWorkflowService:
             resolution_frame, _ = self.build_ma_status_resolution_frame(processor, mapping_frame)
             rows_updated = self.bulk_update_rc_account_extract_ma_status(processor, resolution_frame)
             db_invalid_statuses = self.get_invalid_ma_statuses_from_db(processor)
+
+            # RC_ACCOUNT_STATUS_MAP: the same resolution for every code the config knows,
+            # for SQL that meets a status code outside MA_Status (66.tblComplaint reads
+            # the pre-complaint status out of Status_history).
+            status_service = self._ensure_status_service(processor)
+            map_rows = status_service.write_status_code_map(status_service.build_status_code_map_frame(mapping_frame))
+            customer_logger.info(f'{MAP_TABLE}: {map_rows} status codes written')
 
             result['resolved_statuses'] = len(resolution_frame)
             result['rows_updated'] = rows_updated

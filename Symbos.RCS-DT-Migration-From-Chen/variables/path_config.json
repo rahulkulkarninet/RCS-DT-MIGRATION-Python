@@ -3,6 +3,6 @@
   "network_share_env_var": "NETWORK_SHARE",
   "csv_path_template": "//{server}/{share}/Debtrak/",
   "output_path_template": "//{server}/{share}/Debtrak/Migration/",
-  "sql_file_path": "SQL/migration queries/*.sql"
-
+  "sql_file_path": "SQL/migration queries/*.sql",
+  "sql_path": "C:/Documents/Symbos/RCS-DT-Migration/SQL-Minimal"
 }

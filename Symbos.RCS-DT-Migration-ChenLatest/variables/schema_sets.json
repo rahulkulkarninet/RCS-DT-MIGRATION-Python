@@ -85,12 +85,13 @@
     },
 
     "migrations": {
-      "description": "Additive, re-runnable changes to tables that already exist. Numbered, and run in that order. 004 is documentation only - the database tools/sweep_archive.py moves archived tables on to is created by hand - and 005 rebuilds tblEntry indexes, so neither is here. 006 is, because every environment that archives needs the archive schema before its first run.",
+      "description": "Additive, re-runnable changes to tables that already exist. Numbered, and run in that order. 004 is documentation only - the database tools/sweep_archive.py moves archived tables on to is created by hand - and 005 rebuilds tblEntry indexes, so neither is here. 006 is, because every environment that archives needs the archive schema before its first run. 008 adds the derived treatment step columns to RC_ACCOUNT_EXTRACT (treatment_step_service.py also adds them if missing).",
       "files": [
         "Migrations/001.RC_Processing_Stats_add_RunID.sql",
         "Migrations/002.DT_Migration_SQLProgress.sql",
         "Migrations/003.DT_Migration_LoopProgress.sql",
-        "Migrations/006.archive_schema.sql"
+        "Migrations/006.archive_schema.sql",
+        "Migrations/008.RC_ACCOUNT_EXTRACT_treatment_step_columns.sql"
       ]
     },
 

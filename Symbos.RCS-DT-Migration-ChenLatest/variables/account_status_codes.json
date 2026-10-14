@@ -75,13 +75,13 @@
     "TREATMENT",
     "TREATHOLD",
     "TACT1",
-    "TREATMENTHOLD",
     "INVS"
   ],
   "Treatment – End of Process": [
     "TREATEOP",
     "TREATMENT-EOP",
-    "TREATMENT EOP"
+    "TREATMENT EOP",
+    "TREATMENTHOLD"
   ],
   "First Demand Letter": [
     "LETT1",

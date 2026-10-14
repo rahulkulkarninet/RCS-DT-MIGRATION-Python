@@ -11,6 +11,14 @@ SOURCE_TABLE = 'RC_ACCOUNT_EXTRACT'
 SOURCE_COLUMN = 'MA_Status'
 TARGET_COLUMN = 'MA_Status_AccountStatusID'
 
+# Every RCS status code the config knows, and every tblAccountStatus label, with the
+# AccountStatusID it resolves to. Rebuilt by the status mapping step on each run so the
+# SQL batch can resolve a status code it meets in a pipe-delimited history
+# (66.tblComplaint reads RC_ACCOUNT_EXTRACT.Status_history for the status an account
+# had before its complaint). Status_Key is text_normalization.match_key of the code.
+MAP_TABLE = 'RC_ACCOUNT_STATUS_MAP'
+_MAP_INSERT_CHUNK = 500   # 3 parameters a row, well under the 2100-parameter limit
+
 
 class StatusService:
     """Encapsulates MA_Status mapping, normalization, and validation logic."""
@@ -149,6 +157,89 @@ class StatusService:
             self.db_helper, SOURCE_TABLE, SOURCE_COLUMN, TARGET_COLUMN, pairs
         )
         return mapped
+
+    def build_status_code_map_frame(self, mapping_frame: pd.DataFrame) -> pd.DataFrame:
+        """Rows for RC_ACCOUNT_STATUS_MAP: (Status_Code, Status_Key, AccountStatusID).
+
+        A code that is itself an active tblAccountStatus label resolves to that row, as
+        MA_Status does; otherwise to the label account_status_codes.json maps it to.
+        """
+        columns = ['Status_Code', 'Status_Key', 'AccountStatusID']
+        db_helper = self.db_helper
+        if not db_helper:
+            return pd.DataFrame(columns=columns)
+
+        lookup_frame = db_helper.execute_query(
+            """
+            SELECT AccountStatusID, CAST(AccountStatus AS NVARCHAR(4000)) AS AccountStatus
+            FROM tblAccountStatus
+            WHERE AccountStatus IS NOT NULL AND StatusID = 1
+            """
+        )
+        if lookup_frame.empty:
+            return pd.DataFrame(columns=columns)
+
+        lookup_frame['AccountStatus'] = lookup_frame['AccountStatus'].astype(str).str.strip()
+        lookup_frame = lookup_frame[lookup_frame['AccountStatus'] != ''].copy()
+        lookup_frame['status_key'] = self.status_match_key_series(
+            self.normalize_status_lookup_series(lookup_frame['AccountStatus'])
+        )
+        lookup_frame = lookup_frame.drop_duplicates(subset=['status_key'], keep='first')
+
+        rows: List[Dict[str, Any]] = []
+        for label, key, ident in lookup_frame[['AccountStatus', 'status_key', 'AccountStatusID']].itertuples(index=False, name=None):
+            rows.append({'Status_Code': label, 'Status_Key': key, 'AccountStatusID': int(ident)})
+
+        if not mapping_frame.empty and 'target_key' in mapping_frame.columns:
+            mapped = mapping_frame.merge(
+                lookup_frame[['status_key', 'AccountStatusID']].rename(columns={'status_key': 'target_key'}),
+                on='target_key',
+                how='inner',
+            )
+            for code, key, ident in mapped[['source_code', 'source_key', 'AccountStatusID']].itertuples(index=False, name=None):
+                rows.append({'Status_Code': code, 'Status_Key': key, 'AccountStatusID': int(ident)})
+
+        frame = pd.DataFrame(rows, columns=columns)
+        frame = frame[frame['Status_Key'] != '']
+        # A label wins over a config code that normalises to the same key (same rule as
+        # MA_Status: the direct match is preferred).
+        return frame.drop_duplicates(subset=['Status_Key'], keep='first').reset_index(drop=True)
+
+    def write_status_code_map(self, frame: pd.DataFrame) -> int:
+        """Create RC_ACCOUNT_STATUS_MAP if needed, then replace its rows. Returns rows written."""
+        db_helper = self.db_helper
+        if not db_helper or not getattr(db_helper, 'pyodbc_connection', None):
+            return 0
+
+        connection = db_helper.pyodbc_connection
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                f"IF OBJECT_ID(N'dbo.{MAP_TABLE}', N'U') IS NULL "
+                f"CREATE TABLE dbo.{MAP_TABLE} ("
+                "Status_Code NVARCHAR(400) NOT NULL, "
+                "Status_Key NVARCHAR(400) NOT NULL PRIMARY KEY, "
+                "AccountStatusID INT NOT NULL)"
+            )
+            cursor.execute(f'TRUNCATE TABLE dbo.{MAP_TABLE}')
+            written = 0
+            rows = [tuple(r) for r in frame[['Status_Code', 'Status_Key', 'AccountStatusID']].itertuples(index=False, name=None)]
+            for start in range(0, len(rows), _MAP_INSERT_CHUNK):
+                chunk = rows[start:start + _MAP_INSERT_CHUNK]
+                placeholders = ', '.join(['(?, ?, ?)'] * len(chunk))
+                params = [v for row in chunk for v in (str(row[0]), str(row[1]), int(row[2]))]
+                cursor.execute(
+                    f'INSERT INTO dbo.{MAP_TABLE} (Status_Code, Status_Key, AccountStatusID) VALUES {placeholders}',
+                    params,
+                )
+                written += len(chunk)
+            connection.commit()
+            return written
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            cursor.close()
 
     def get_invalid_ma_statuses_from_db(self) -> List[str]:
         """MA_Status values left without an AccountStatusID (01 gives them the default)."""

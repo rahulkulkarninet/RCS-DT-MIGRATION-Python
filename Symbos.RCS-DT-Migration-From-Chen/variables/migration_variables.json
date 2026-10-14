@@ -41,7 +41,7 @@
                 },
                 "BankAccountID_DefaultHost": {
                     "column": "BankAccountID_DefaultHost",
-                    "default": 95,
+                    "default": 77,
                     "data_type": "int"
                 },
                 "DefaultCountryID": {
@@ -295,6 +295,10 @@
                 },
                 "RelationshipID_ThirdPartyInsurer": {
                     "default": 40,
+                    "data_type": "int"
+                },
+                "Treatment_MaxAgeDays": {
+                    "default": 365,
                     "data_type": "int"
                 }
             }

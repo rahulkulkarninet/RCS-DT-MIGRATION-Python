@@ -211,7 +211,8 @@ CREATE TABLE [dbo].[RC_HARDSHIP_EXTRACT](
 	[Debtor_2_Employer_Address_State] [nvarchar](1000) NULL,
 	[NAB_Close_Request_Operator] [nvarchar](1000) NULL,
 	[Archive_Comment] [nvarchar](max) NULL,
-	[Moratorium_Expiry_Email_Sent_Date] [datetime] NULL
+	[Moratorium_Expiry_Email_Sent_Date] [datetime] NULL,
+	[Archive_Date] [datetime] NULL
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
 

@@ -214,9 +214,14 @@ class StagingProcessor:
             output_template = path_vars.get('OUTPUT_PATH_TEMPLATE', '//{server}/{share}/Debtrak/Migration/')
             sql_path = path_vars.get('SQL_FILE_PATH', 'SQL/migration queries/*.sql')
 
+            # CSV_PATH/OUTPUT_PATH in the environment file are literal overrides for
+            # local runs, used instead of the //{server}/{share}/ UNC template.
+            csv_override = self.db_helper.config.get('CSV_PATH') if self.db_helper else None
+            output_override = self.db_helper.config.get('OUTPUT_PATH') if self.db_helper else None
+
             # Resolve and store file paths
-            self.file_paths['csv'] = csv_template.format(server=network_server, share=network_share)
-            self.file_paths['output'] = output_template.format(server=network_server, share=network_share)
+            self.file_paths['csv'] = csv_override or csv_template.format(server=network_server, share=network_share)
+            self.file_paths['output'] = output_override or output_template.format(server=network_server, share=network_share)
             self.file_paths['sql'] = sql_path
 
         except Exception as e:
@@ -398,8 +403,7 @@ class StagingProcessor:
         try:
             # First attempt with 'warn' - shows problematic lines but continues
             frame = pd.read_csv(
-                path, sep=',', usecols=cols, index_col=False, names=cols,
-                header=0, encoding=encoding,
+                path, sep=',', usecols=cols, index_col=False, encoding=encoding,
                 on_bad_lines='warn',  # Keep 'warn' for transparency
                 dtype=str,
                 **na_opts
@@ -415,8 +419,7 @@ class StagingProcessor:
                 try:
                     # Recovery attempt with 'warn' + more forgiving settings
                     frame = pd.read_csv(
-                        path, sep=',', usecols=cols, index_col=False, names=cols,
-                        header=0, encoding=encoding,
+                        path, sep=',', usecols=cols, index_col=False, encoding=encoding,
                         on_bad_lines='warn',  # Still warn about issues
                         dtype=str,
                         quoting=3,  # QUOTE_NONE
@@ -440,8 +443,7 @@ class StagingProcessor:
                         # Final attempt. Bad lines are captured rather than
                         # skipped, so nothing disappears without being counted.
                         frame = pd.read_csv(
-                            path, sep=',', usecols=cols, index_col=False, names=cols,
-                            header=0, encoding=encoding,
+                            path, sep=',', usecols=cols, index_col=False, encoding=encoding,
                             on_bad_lines=capture_bad_line,
                             dtype=str,
                             quoting=3,
@@ -813,7 +815,7 @@ class StagingProcessor:
             bad_lines.append(line)
             return None
 
-        base = dict(sep=',', usecols=cols, index_col=False, names=cols, header=0,
+        base = dict(sep=',', usecols=cols, index_col=False,
                     encoding=encoding, dtype=str, chunksize=chunk_rows,
                     **na_read_options())
         tiers = (

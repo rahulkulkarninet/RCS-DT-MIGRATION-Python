@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "How treatment_step_service.py derives RC_ACCOUNT_EXTRACT.Treatment_NewStep, the",
+    "GS-COMBINED step 78.tblAccount_Treatment.sql allocates a migrated account at.",
+    "Reverse-engineered on 2026-10-12 from Suzanne Chhour's Treatment_Migration_Validation",
+    "workbook (23 Sep 2026): the 'New Mapping' tab gives the ladder, the 'Complete Mapping'",
+    "tab gives the RCS treatment code -> new treatment pairs and the age bands. Validated",
+    "against her 33,530 rows: 99.9% on Exetel SM9641 with a same-week extract.",
+    "",
+    "Rule, per open account (closed_date_column empty):",
+    "  1. RCS Current_Treatment known here  -> ladder.first_step - 1 + MA_Next_Step_No (staging: Next_Step_No_1),",
+    "     capped at that treatment's ladder.last_step.",
+    "  2. otherwise (no current treatment, or an unknown code) -> untreated.default_step,",
+    "     unless the debt is younger than an age band's max_age_days (first band that fits).",
+    "A closed account gets no step and therefore no treatment.",
+    "",
+    "ladder.last_step for the Loop is 36, not the ladder's 37: Suz's sheet never sends an",
+    "account past step 36 (SMS05 at 37 is never the landing step). Change here if she does."
+  ],
+
+  "target_treatment_code": "GS-COMBINED",
+
+  "ladder": {
+    "100834": { "name": "Digital First", "first_step": 1,  "last_step": 7  },
+    "100838": { "name": "Primary",       "first_step": 8,  "last_step": 27 },
+    "100839": { "name": "Loop",          "first_step": 28, "last_step": 36 }
+  },
+
+  "rcs_treatment_codes": {
+    "100834": ["100659", "100834", "100982", "101048", "101060", "101089", "101218", "101220", "101234"],
+    "100838": ["100838", "101052", "101090", "101221", "101235"],
+    "100839": ["100839", "100840", "100979", "100980", "101091", "101092", "101222", "101223", "101236", "101237"]
+  },
+
+  "_source_columns_note": "Staging column names (after column mapping/RC_ACCOUNT_EXTRACT.csv): the extract header MA_Next_Step_No lands in Next_Step_No_1.",
+  "source_columns": {
+    "current_treatment": "Current_Treatment",
+    "next_step": "Next_Step_No_1",
+    "closed_date": "Date_Closed",
+    "age_from": "Date_Time_Entered"
+  },
+
+  "untreated": {
+    "default_step": 36,
+    "age_bands": [
+      { "max_age_days": 28,  "step": 11 },
+      { "max_age_days": 48,  "step": 18 },
+      { "max_age_days": 365, "step": 29 }
+    ]
+  }
+}

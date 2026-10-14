@@ -48,6 +48,12 @@ from services.workflows.customer_state_workflow_service import (
 )
 from services.workflows.customer_sql_workflow_service import CustomerSQLWorkflowService
 from services.workflows.customer_status_workflow_service import CustomerStatusWorkflowService
+from services.workflows.customer_treatment_step_workflow_service import (
+    CustomerTreatmentStepWorkflowService,
+)
+from services.workflows.customer_arrangement_status_workflow_service import (
+    CustomerArrangementStatusWorkflowService,
+)
 from services.workflows.customer_staging_workflow_service import CustomerStagingWorkflowService
 from services.workflows.customer_summary_service import CustomerSummaryService
 from process_staging import StagingProcessor
@@ -78,6 +84,8 @@ from result_types import (
     StateUpdateResult,
     StatusCheckResult,
     StatusUpdateResult,
+    TreatmentStepUpdateResult,
+    ArrangementStatusUpdateResult,
 )
 from arrangement_type_service import ArrangementTypeService
 from bank_transaction_method_service import BankTransactionMethodService
@@ -91,6 +99,8 @@ from operator_contact_service import OperatorContactService
 from related_party_type_service import RelatedPartyTypeService
 from state_service import StateService
 from status_service import StatusService
+from treatment_step_service import TreatmentStepService
+from arrangement_status_service import ArrangementStatusService
 from config_parser import ConfigParser
 from interaction import ApprovalPolicy, GATE_SQL, GATE_STAGING
 
@@ -120,6 +130,8 @@ class CustomerProcessor:
         self.memory_manager = MemoryManager(max_memory_percent=80.0)
         self.sql_manager = None
         self.status_service: Optional[StatusService] = None
+        self.treatment_step_service: Optional[TreatmentStepService] = None
+        self.arrangement_status_service: Optional[ArrangementStatusService] = None
         self.bank_transaction_method_service: Optional[BankTransactionMethodService] = None
         self.arrangement_type_service: Optional[ArrangementTypeService] = None
         self.closure_reason_service: Optional[ClosureReasonService] = None
@@ -137,6 +149,8 @@ class CustomerProcessor:
         self.customer_file_service = CustomerFileService()
         self.customer_sql_workflow_service = CustomerSQLWorkflowService()
         self.customer_status_workflow_service = CustomerStatusWorkflowService()
+        self.customer_treatment_step_workflow_service = CustomerTreatmentStepWorkflowService()
+        self.customer_arrangement_status_workflow_service = CustomerArrangementStatusWorkflowService()
         self.customer_bank_transaction_method_workflow_service = (
             CustomerBankTransactionMethodWorkflowService()
         )
@@ -617,6 +631,30 @@ class CustomerProcessor:
         variables/account_status_codes.json. MA_Status keeps the value sent.
         """
         return self.customer_status_workflow_service.update_rc_account_extract_ma_status(
+            self,
+            customer_logger,
+        )
+
+    def update_treatment_steps(self, customer_logger: logging.Logger) -> TreatmentStepUpdateResult:
+        """
+        Fill RC_ACCOUNT_EXTRACT.Treatment_NewStep (the GS-COMBINED step 78 allocates
+        at) from Current_Treatment / MA_Next_Step_No / debt age using
+        variables/treatment_step_codes.json. Closed accounts get no step.
+        """
+        return self.customer_treatment_step_workflow_service.update_rc_account_extract_treatment_step(
+            self,
+            customer_logger,
+        )
+
+    def update_arrangement_statuses(self, customer_logger: logging.Logger) -> ArrangementStatusUpdateResult:
+        """
+        Suz's no-active-arrangement rule (variables/arrangement_status_rules.json): an
+        open account in an instalment / PTP / dishonour RCS status with no arrangement
+        or deal behind it is moved to Treatment Allocated or End of Process, and its
+        derived step adjusted. Runs after the status and treatment step mappings and
+        overrides their columns; records what it saw in Arrangement_Active.
+        """
+        return self.customer_arrangement_status_workflow_service.update_rc_account_extract_arrangement_status(
             self,
             customer_logger,
         )

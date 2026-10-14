@@ -16,11 +16,12 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
           ArrangementStatusID ,
           FrequencyID ,
           LoadID,
-          ArrangementDate
+          ArrangementDate ,
+          InstallmentAmount
         )
-        SELECT  A.AccountID ,		
+        SELECT  A.AccountID ,
                 DL.Deal_Amount ,
-                1 ,
+                ISNULL(OPC.ContactID, {{DefaultOperatorContactID}}) , -- CreateID
                 {{CurrentSessionID}} ,
                 ISNULL({{ArrangementTypeID_Deal}}, 1) ,
                 DL.No_Instalments ,
@@ -32,15 +33,28 @@ INSERT  INTO tblArrangement WITH ( ROWLOCK )
                 DL.Bal_At_Tme_Of_Offer ,
                 DL.Date_of_Deal , --GETDATE(),
                 1 ,
-                CASE 
+                CASE
                     WHEN (DL.Deal_Amount - ISNULL(DL.Total_Paid,0) <= 0) THEN 2 --Successful
-                    WHEN ((DL.Deal_Amount - ISNULL(DL.Total_Paid,0) > 0) AND DATEDIFF(DAY, DL.Due_Date, GETDATE()) < 0) THEN 4 -- Failed
-                    ELSE 1 -- In Progress                    
-                END ,  
+                    WHEN UPPER(LTRIM(RTRIM(DL.Status))) IN ( 'PTPB', 'SFLB', 'INSTALB' ) THEN 4 -- Failed
+                    WHEN DATEDIFF(DAY, DL.Due_Date, GETDATE()) > 0 THEN 4 -- Failed
+                    ELSE 1 -- In Progress
+                END ,
                 NULL ,  --Deal is an Ad-hoc arrangement, no frequency4
                 {{LoadID}},
-                DL.Date_of_Deal
+                DL.Date_of_Deal ,
+                INST.FirstInstalment -- InstallmentAmount
         FROM    [RC_DEAL] DL
                 INNER JOIN tblAccount A WITH ( NOLOCK ) ON A.AccountNumberPrevious = CONVERT(nvarchar(100), DL.Extended_Debt_Code)
+                OUTER APPLY ( SELECT TOP 1
+                                        C.ContactID
+                              FROM      tblContact C WITH ( NOLOCK )
+                              WHERE     C.IsUser = 1
+                                        AND C.Z_REF = LTRIM(RTRIM(DL.Op_Code))
+                              ORDER BY  CASE WHEN ISNULL(C.StatusID, 0) = 1 THEN 0 ELSE 1 END ,
+                                        C.ContactID
+                            ) OPC
+                CROSS APPLY ( SELECT TRY_CONVERT(decimal(18, 2),
+                                        REPLACE(LEFT(DL.Instalment_Amt, CHARINDEX('|', DL.Instalment_Amt + '|') - 1), '''', '')) AS FirstInstalment
+                            ) INST
         WHERE   A.LoadID = {{LoadID}}
         ;

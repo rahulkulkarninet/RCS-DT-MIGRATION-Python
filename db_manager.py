@@ -142,7 +142,12 @@ class DatabaseHelper:
         # a previous environment's credential over. load_dotenv(override=True)
         # replaces what the new file defines, but says nothing about keys the new
         # file omits.
-        env_vars_to_clear = ['SERVER', 'DATABASE', 'USERNAME',
+        # USERNAME is deliberately not cleared here: config['USERNAME'] below is
+        # hardcoded to '' and never read from the environment, but getpass.getuser()
+        # elsewhere in the process falls back to it (via LOGNAME/USER/LNAME/USERNAME)
+        # on Windows machines that don't set the other three, and clearing it with
+        # nothing to restore it breaks that fallback for the rest of the run.
+        env_vars_to_clear = ['SERVER', 'DATABASE',
                              'CLIENT_ID', 'CLIENT_SECRET',
                              'BCP_AUTH', 'BCP_DSN', 'BCP_USERNAME',
                              ]
@@ -169,7 +174,9 @@ class DatabaseHelper:
             # the same driver major version as the installed bcp.
             'BCP_DSN': os.getenv('BCP_DSN', ''),
             'CLIENT_ID': os.getenv('CLIENT_ID', ''),
-            'CLIENT_SECRET': os.getenv('CLIENT_SECRET', '')
+            'CLIENT_SECRET': os.getenv('CLIENT_SECRET', ''),
+            'CSV_PATH': os.getenv('CSV_PATH', ''),
+            'OUTPUT_PATH': os.getenv('OUTPUT_PATH', '')
         }
         
         # Retained for compatibility with callers that still inspect USERNAME.
@@ -854,7 +861,8 @@ class DatabaseHelper:
             try:
                 return operation()
             except MemoryError:
-                raise  
+                raise
+            except Exception as e:
                 if attempt >= max_attempts or not self.is_transient_error(e):
                     raise
                 wait = min(2 ** (attempt - 1), 30)

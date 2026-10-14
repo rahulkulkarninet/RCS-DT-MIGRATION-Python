@@ -116,6 +116,62 @@ Optional keys:
   to it - the archive step renames tables within the run's own database, and the sweep is what
   crosses into this one.
 
+### Treatment step (derived per run)
+
+`78.tblAccount_Treatment.sql` allocates each open migrated account on GS-COMBINED at the
+step `treatment_step_service.py` derives into `RC_ACCOUNT_EXTRACT.Treatment_NewStep` during
+the mapping phase (right after the status mapping), from `variables/treatment_step_codes.json`:
+
+- an account on a known RCS treatment (`Current_Treatment`) lands at the new treatment's
+  ladder offset + `MA_Next_Step_No`, capped at the end of that ladder (Digital 1-7,
+  Primary 8-27, Loop 28-36);
+- an open account with no treatment, or an unknown code, lands at step 36 unless an age
+  band catches it (debt age 0-28 days -> 11, 29-48 -> 18, 49-365 -> 29);
+- a closed account (`Date_Closed` set) gets no step and therefore no treatment.
+
+This is the rule behind the "Complete Mapping" tab of Suz's `Treatment_Migration_Validation`
+workbook (99.9% match on Exetel against a same-week extract). The run logs the step
+counts and any RCS treatment code the config does not know; add such codes to the
+`rcs_treatment_codes` list of the new treatment they belong to. `RC_TREATMENT_CODE_MAP` is
+rebuilt from the config on every run, like `RC_ACCOUNT_STATUS_MAP`.
+
+`tools/validate_treatment_step_rule.py` replays the rule over a client's account extract
+CSVs and compares it with the workbook, for sign-off or after a config change:
+
+```bash
+python tools/validate_treatment_step_rule.py SM9641 --account-csv "...\SMAUS_SM9641_RC_ACCOUNT_EXTRACT_*.csv" --workbook "<path>.xlsx"
+```
+
+The two derived columns are in the `RC_ACCOUNT_EXTRACT` schema file and in `Migrations/008`;
+the service also adds them to an older staging table itself.
+
+### Arrangement rule (derived per run)
+
+After the status and treatment step mappings, `arrangement_status_service.py` applies Suz's
+rule of 13 Oct 2026 (`variables/arrangement_status_rules.json`) to open accounts whose RCS
+status is an instalment, promise-to-pay or dishonour status (`INSTAL*`, `PTP*`,
+`CCDECLINED`, `DISPMT`): such an account must not land on a Debtrak arrangement status
+unless something is actually in place.
+
+- an *active instalment* is a row in `RC_ARRANGEMENT` for the debt with a next instalment
+  date; an *active deal* is a row in `RC_DEAL` (payment in full, part payment, settlement)
+  with a due date, past or future (a PTP stays active through Debtrak's grace period, so
+  any PTP with a due date carries over and the few stale ones are handled by hand). Either
+  one keeps the account on the status
+  `account_status_codes.json` gave it;
+- with neither, an account on a mapped RCS treatment goes to Treatment Allocated and keeps
+  its derived step; an untreated account whose debt is a year old or younger goes to
+  Treatment Allocated at step 30 (just before the loop); an untreated account older than a
+  year goes to Treatment - End of Process with no treatment.
+
+The rule writes over `MA_Status_AccountStatusID` and `Treatment_NewStep` /
+`Treatment_NewTreatmentCode`, so `01` and `78` need nothing new, and records what it saw
+in `RC_ACCOUNT_EXTRACT.Arrangement_Active` (`INSTALMENT`, `DEAL` or `NONE`; NULL outside
+the scope) for the check reports. The run logs the counts per outcome. The column is in
+the `RC_ACCOUNT_EXTRACT` schema file and in `Migrations/009`; the service also adds it to
+an older staging table itself. The status labels in the config must exist in
+`tblAccountStatus`, or the run stops at this step.
+
 ### Schema deployment (once per environment, and after a schema change)
 
 A run refuses to start if a staging table is missing, and deploys none of them itself.

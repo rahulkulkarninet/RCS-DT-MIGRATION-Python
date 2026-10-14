@@ -59,6 +59,7 @@ Unauth_Third_Party_Name,Unauth_Third_Party_Name
 Unauth_Third_Party_DOB,Unauth_Third_Party_DOB
 Unauth_Third_Party_Age,Unauth_Third_Party_Age
 Unauth_Third_Party_Address,Unauth_Third_Part_ddress
+Unauth_Third_Party_Address,Unauth_Third_Party_Address
 Unauth_Third_Party_Email,Unauth_Third_Party_Email
 Unauth_Third_Party_Phone,Unauth_Third_Party_Phone
 Closure_Reason,Closure_Reason
@@ -68,6 +69,7 @@ Monetary_Compensation,Monetary_Compensation
 Compensation_Amount,Compensation_Amount
 Cct_Officer_Closing_Complaint,Cct_Officer_Closing_Complaint
 Closed_Date,Closed Date
+Closed_Date,Closed_Date
 Audit_Date,Audit_Date
 Audit_Action,Audit_Action
 Audit_Operator,Audit_Operator

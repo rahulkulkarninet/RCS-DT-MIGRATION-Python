@@ -21,8 +21,8 @@ INSERT  INTO tblCallHistory
         SELECT  1 , --CallDataSourceID	
                 NULL , --,SequenceNumber	
                 A.AccountID ,--,DebtrakAccountID	
-                NULL , --,DiallerLogin	
-                DC.Date ,--,CallStartDateTime	
+                NULL , --,DiallerLogin
+                CONVERT(datetime, DC.[Date] AT TIME ZONE 'AUS Eastern Standard Time' AT TIME ZONE 'UTC') ,--,CallStartDateTime
                 NULL ,--,CallEndDateTime	
                 NULL ,--,CallWrapDateTime	
                 NULL , --,AgentDisposition	

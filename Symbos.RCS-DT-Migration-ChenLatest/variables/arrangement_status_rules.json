@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "How arrangement_status_service.py applies Suzanne Chhour's rule of 13 Oct 2026 for",
+    "accounts whose RCS status is an instalment / promise-to-pay / dishonour status",
+    "(in_scope_statuses) but that have no active arrangement behind it. Runs after the",
+    "status and treatment step mappings and overrides their derived columns:",
+    "",
+    "  active instalment = a row in RC_ARRANGEMENT for the debt with a next instalment date;",
+    "  active deal       = a row in RC_DEAL for the debt (payment in full / part payment /",
+    "                      settlement) with a due date - past due dates included (Suz 13 Oct:",
+    "                      a PTP stays active through Debtrak's grace period; carry any PTP",
+    "                      with a due date over, exceptions are few and managed by hand);",
+    "  an in-scope open account with neither:",
+    "    - on a mapped RCS treatment (Treatment_NewTreatmentCode set by the step rule):",
+    "        status -> with_treatment_code.status, step unchanged;",
+    "    - no treatment, debt age <= without_treatment_code.max_age_days:",
+    "        status -> young.status, step -> young.step;",
+    "    - no treatment, older: status -> old.status, no treatment (step cleared).",
+    "  Accounts with an active instalment or deal keep the status account_status_codes.json",
+    "  gave them. Closed accounts (closed_date set) and statuses outside the scope are not",
+    "  touched. RC_ACCOUNT_EXTRACT.Arrangement_Active records what the rule saw for each",
+    "  in-scope open account: INSTALMENT, DEAL or NONE (NULL outside the scope).",
+    "",
+    "Scope and definitions confirmed by Suz in the Treatment Mapping chat, 13 Oct 2026:",
+    "  INSTAL: 'there is a payment plan recorded on account with a next instalment date';",
+    "  PTP: 'there is an active payment in full (or part pay, or settlement) on account",
+    "  with a due date'. Everything else keeps the agreed status mapping."
+  ],
+  "source_columns": {
+    "debt_code": "Full_Debt_Code",
+    "status": "MA_Status",
+    "closed_date": "Date_Closed",
+    "age_from": "Date_Time_Entered"
+  },
+  "in_scope_statuses": {
+    "prefixes": [
+      "INSTAL",
+      "PTP"
+    ],
+    "codes": [
+      "CCDECLINED",
+      "DISPMT"
+    ]
+  },
+  "active_arrangement": {
+    "instalment": {
+      "table": "RC_ARRANGEMENT",
+      "debt_code": "Extended_Debt_Code",
+      "date_column": "Next_Instal_Date",
+      "date_must_be_today_or_later": false
+    },
+    "deal": {
+      "table": "RC_DEAL",
+      "debt_code": "Extended_Debt_Code",
+      "date_column": "Due_Date",
+      "date_must_be_today_or_later": false
+    }
+  },
+  "no_active_arrangement": {
+    "with_treatment_code": {
+      "status": "Treatment Allocated"
+    },
+    "without_treatment_code": {
+      "max_age_days": 365,
+      "young": {
+        "status": "Treatment Allocated",
+        "step": 30
+      },
+      "old": {
+        "status": "Treatment – End of Process",
+        "step": null
+      }
+    }
+  }
+}

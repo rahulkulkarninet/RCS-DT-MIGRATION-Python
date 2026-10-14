@@ -1,41 +1,10 @@
--- REWRITTEN 2026-09-23: Digital First, Primary and Loop are ONE continuous 37-step
--- treatment now, not three separate ones. Per the business clarification that day:
--- score-colour-based branching between them was descoped for T1 go-live, so instead of
--- three treatments with "re-allocation" between them, the whole thing was built as one
--- long sequence (Digital First 1-7, Primary extended 8-27, Loop 28-37) made long enough
--- (~90+ days) that it never needs to loop back. Matches the "New Mapping" tab of
--- Treatment_Migration_Validation (1).xlsx exactly - see build_combined_treatment*.py in
--- the scratchpad for how GS-COMBINED was built from it.
---
--- This also replaces the old approach of always allocating fresh at step 1: instead it
--- reads the CURRENT step directly from RC_TREATMENT_STEP_MAPPING, a lookup table loaded
--- from the "Complete Mapping" tab of that same workbook - Suz's own team's precomputed
--- current-legacy-code/step -> new-step numbers, not something this script re-derives.
--- That mapping was confirmed (2026-09-23) to be a literal SequenceNo in the new 37-step
--- treatment, not something needing further translation.
---
--- RC_TREATMENT_STEP_MAPPING only has rows for accounts whose Short_Debt_Code resolved
--- against our local RC_TREATMENT CSVs (3,153 of CG8110's 3,667 rows in "Complete Mapping"
--- - the other 514 didn't resolve, most likely because our local extract is a few weeks
--- stale relative to Suz's fresher export). An account with no row here is excluded via
--- CROSS APPLY, same as an account with no resolvable treatment always has been - this
--- migration does not guess a step for an account it has no precomputed mapping for.
---
--- 2026-09-29/30: two rules from the Treatment Mapping chat were briefly enforced here
--- (skip TREATMENTHOLD / TREATEOP accounts; skip debts aged 365+ days). Suzanne Chhour
--- reversed both on 29 Sep (22:46 UTC) in the same chat:
---   a. "If treatment has been mapped, map it and just move to the current status" - i.e.
---      allocate every account that has a Complete Mapping row, regardless of RCS status.
---      TREATMENTHOLD and TREATEOP both land in the Debtrak status
---      'Treatment - End of Process' (see variables/account_status_codes.json).
---   b. The 365-day rule is a business operating control on which stock gets campaigned,
---      not a migration filter. Aged files will be bulk-moved to End of Process by the
---      business (manually or via a new module) after migration.
--- So this script allocates purely from RC_TREATMENT_STEP_MAPPING again. The
--- Treatment_MaxAgeDays constant (default 365) stays in migration_variables.json in case
--- the age rule is ever wanted back, but is not referenced here.
--- Sravanthi confirmed (29 Sep) that accounts with no mapping row are files closed in
--- RCS after our extract was taken; they migrate with their status and get no treatment.
+-- Allocates every open migrated account on GS-COMBINED (Digital First 1-7, Primary
+-- 8-27, Loop 28-37 as one 37-step treatment, per the business decision of 2026-09-23)
+-- at the step treatment_step_service.py derived into RC_ACCOUNT_EXTRACT.Treatment_NewStep
+-- from the RCS current treatment, next step and debt age (variables/treatment_step_codes.json).
+-- A closed account has no derived step and gets no treatment. Suzanne Chhour (29 Sep):
+-- allocate regardless of RCS status; the 365-day rule is a business control applied
+-- after migration, not a migration filter.
 INSERT  INTO tblAccount_Treatment WITH ( ROWLOCK )
         ( AccountID ,
           EntityID ,
@@ -60,25 +29,30 @@ INSERT  INTO tblAccount_Treatment WITH ( ROWLOCK )
                 AR.TreatmentAllocationRuleID ,
                 1 ,
                 'Migration' ,
-                SYSDATETIMEOFFSET() ,
+                -- AllocatedAt / NextDueDate (fixed 2026-10-12, Srav: "why is the next step
+                -- action date 23/03/27"): the ladder stores every step as a day offset from
+                -- the ladder start, and the engine shows/dues step N at AllocatedAt + offset.
+                -- A migrated account is placed AT its current step, so that step is due on
+                -- migration day, not offset days later. Backdating AllocatedAt by the step's
+                -- offset makes "day N of the ladder" land on migration day and keeps the
+                -- engine's drift display consistent; NextDueDate is migration day itself.
+                DATEADD(DAY, -STEP.DayOffset, SYSDATETIMEOFFSET()) ,
                 MAP.New_Treatment_Step ,
-                DATEADD(DAY, STEP.DayOffset, CAST(GETUTCDATE() AS DATE)) ,
+                CAST(GETUTCDATE() AS DATE) ,
                 0 ,
                 0 ,
                 -- FamilyVersionPinTS (NOT NULL, no default; appeared on dev-debtrak between
                 -- 2026-09-24 and 2026-09-29 alongside the FAM* template-family rename): the
                 -- moment the account was pinned to the treatment's template-family version.
-                -- For a migrated allocation that is the allocation itself, so it takes the
-                -- same timestamp as AllocatedAt. No app-side INSERT existed in Query Store
-                -- yet to copy the app's own value from.
+                -- For a migrated allocation that is the migration run itself (AllocatedAt is
+                -- backdated by the step offset, so this is deliberately NOT the same value).
+                -- No app-side INSERT existed in Query Store yet to copy the app's own value from.
                 SYSDATETIMEOFFSET()
         FROM    tblAccount A WITH ( NOLOCK )
-                -- One row per account, keyed on the stable Full_Debt_Code business key -
-                -- loaded fresh by build_step_mapping_lookup.py from "Complete Mapping",
-                -- not computed here.
-                CROSS APPLY ( SELECT TOP 1 Client_Code, New_Treatment_Step
-                              FROM   RC_TREATMENT_STEP_MAPPING
-                              WHERE  Full_Debt_Code = A.AccountNumberPrevious
+                CROSS APPLY ( SELECT TOP 1 RC.Client_Code, RC.Treatment_NewStep AS New_Treatment_Step
+                              FROM   RC_ACCOUNT_EXTRACT RC
+                              WHERE  CAST(RC.Full_Debt_Code AS NVARCHAR(50)) = A.AccountNumberPrevious
+                                     AND RC.Treatment_NewStep IS NOT NULL
                             ) MAP
                 -- CROSS, not OUTER: TreatmentID is NOT NULL on tblAccount_Treatment. Only
                 -- one treatment exists now (GS-COMBINED), but this still resolves it via

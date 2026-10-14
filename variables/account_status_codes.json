@@ -49,7 +49,8 @@
     "BKTD"
   ],
   "Part IX Debt Agreement": [
-    "PARTIX"
+    "PARTIX",
+    "PART9"
   ],
   "Part IX – Instalments": [
     "P9INST"
@@ -57,7 +58,7 @@
   "Liquidator / Administrator Appointed": [
     "LIQ"
   ],
-  "Deregistered Company": [
+  "Deregistered Bus/Co": [
     "DEREG"
   ],
   "New File": [
@@ -75,12 +76,14 @@
   "Treatment Allocated": [
     "TREATMENT",
     "TREATHOLD",
-    "TACT1"
+    "TACT1",
+    "INVS"
   ],
   "Treatment – End of Process": [
     "TREATEOP",
     "TREATMENT-EOP",
-    "TREATMENT EOP"
+    "TREATMENT EOP",
+    "TREATMENTHOLD"
   ],
   "First Demand Letter": [
     "LETT1",
@@ -99,7 +102,10 @@
     "CALL1A",
     "CALL2",
     "CALL",
-    "CALL2A"
+    "CALL2A",
+    "ASSIGNED",
+    "PHONE2A7",
+    "OVERSEAS"
   ],
   "Unable to Contact": [
     "UNABCON",
@@ -177,9 +183,7 @@
     "FACTORED"
   ],
   "Complaint Lodged": [
-    "COMPLAINT"
-  ],
-  "Complaint – 14 Day Hold": [
+    "COMPLAINT",
     "COMPLAINTHOLD"
   ],
   "Deceased – Pending Confirmation": [
@@ -189,7 +193,8 @@
   "Account in Dispute": [
     "DISPT",
     "CLDISPUTE",
-    "DISPUTE"
+    "DISPUTE",
+    "DSPT"
   ],
   "Dispute – Liability": [
     "DISPL"
@@ -250,15 +255,17 @@
     "CLHOLD",
     "HOLDS",
     "TREATPAS",
-    "TREATMENTHOLD",
-    "AGEEXCLUSION"
+    "AGEEXCLUSION",
+    "UNCONTACT"
   ],
   "Awaiting Instructions – Client": [
     "AWIC",
     "HOLDK",
     "AWCI",
     "Invoice",
-    "AWCIR"
+    "AWCIR",
+    "PARTW/OF",
+    "SETDPP"
   ],
   "Awaiting Instructions – Legal": [
     "AWIL"
@@ -305,7 +312,10 @@
   "Recommended Close to Client": [
     "RECCLOSE",
     "CTCRC",
-    "CLRECCL"
+    "CLRECCL",
+    "CLCR",
+    "DUP",
+    "RECALLD"
   ],
   "Client Escalation": [
     "CTCE"
@@ -356,7 +366,8 @@
     "REVIEWL"
   ],
   "Referred for Legal Action": [
-    "LEGAL (all 3 duplicate entries)"
+    "LEGAL (all 3 duplicate entries)",
+    "LEGAL"
   ],
   "Legal Hold": [
     "LEGHOLD",
@@ -481,7 +492,8 @@
     "PTPCPP",
     "PTPC",
     "PTPDPP",
-    "PTPD"
+    "PTPD",
+    "PTPPD"
   ],
   "Part Payment": [
     "PTPP"

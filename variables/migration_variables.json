@@ -16,7 +16,7 @@
                 },
                 "ContactDetailTypeID_Home": {
                     "column": "ContactDetailTypeID_HomePhone",
-                    "default": 1,
+                    "default": 6,
                     "data_type": "int"
                 },
                 "ContactDetailTypeID_Mobile": {
@@ -41,7 +41,7 @@
                 },
                 "BankAccountID_DefaultHost": {
                     "column": "BankAccountID_DefaultHost",
-                    "default": 95,
+                    "default": 77,
                     "data_type": "int"
                 },
                 "DefaultCountryID": {
@@ -59,6 +59,21 @@
                     "default": 11,
                     "data_type": "int"
                 },
+                "RelationshipID_3PDM_Adhoc": {
+                    "column": "RelationshipID_3PDM_Adhoc",
+                    "default": 12,
+                    "data_type": "int"
+                },
+                "RelationshipID_PrimaryDebtor": {
+                    "column": "RelationshipID_PrimaryDebtor",
+                    "default": 1,
+                    "data_type": "int"
+                },
+                "SecondaryRelationshipID_3PDM": {
+                    "column": "SecondaryRelationshipID_3PDM",
+                    "default": 9,
+                    "data_type": "int"
+                },
                 "RelationshipID_Witness": {
                     "column": "RelationshipID_Witness",
                     "default": 17,
@@ -66,7 +81,7 @@
                 },
                 "ContactDetailTypeID_Work": {
                     "column": "ContactDetailTypeID_WorkPhone",
-                    "default": 1,
+                    "default": 5,
                     "data_type": "int"
                 }
             }
@@ -89,7 +104,8 @@
                     "column": "EntryTypeID",
                     "default": -1,
                     "filter_col": "EntryType",
-                    "filter_value": "Treatment",
+                    "filter_value": "TreatmentService Entry Type",
+                    "filter_normalized": true,
                     "data_type": "int"
                 },
                 "EntryTypeID_Result": {
@@ -98,6 +114,7 @@
                     "default": -1,
                     "filter_col": "EntryType",
                     "filter_value": "Result",
+                    "filter_normalized": true,
                     "data_type": "int"
                 },
                 "ArrangementTypeID_Deal": {
@@ -114,6 +131,14 @@
                     "default": null,
                     "filter_col": "BankTransactionMethod",
                     "filter_value": "Direct Payment",
+                    "data_type": "int"
+                },
+                "DefaultOperatorContactID": {
+                    "main_table": "tblContact",
+                    "column": "ContactID",
+                    "default": 1,
+                    "filter_col": "UserName",
+                    "filter_value": "PRAM",
                     "data_type": "int"
                 }
             }
@@ -184,6 +209,14 @@
         },
         "constant_variables": {
             "variables": {
+                "ClosedAccountRetentionMonths": {
+                    "default": 13,
+                    "data_type": "int"
+                },
+                "RecentPaymentMonths": {
+                    "default": 6,
+                    "data_type": "int"
+                },
                 "RelationshipID_Guarantor": {
                     "default": 19,
                     "data_type": "int"
@@ -262,6 +295,10 @@
                 },
                 "RelationshipID_ThirdPartyInsurer": {
                     "default": 40,
+                    "data_type": "int"
+                },
+                "Treatment_MaxAgeDays": {
+                    "default": 365,
                     "data_type": "int"
                 }
             }

@@ -1,3 +1,4 @@
+import os
 import time
 from collections import OrderedDict
 from typing import Any, Dict
@@ -36,13 +37,36 @@ class MigrationExecutionService:
             pyodbc_files = OrderedDict()
             sqlcmd_files = OrderedDict()
 
+            # sqlcmd is only usable when it can log in: off Azure (trusted), with
+            # go-sqlcmd (service principal), or with a SQL login. The classic ODBC
+            # sqlcmd has no service-principal path on Azure, so there the sequence-78
+            # files run through PyODBC like everything else (2026-10-09: dev load 705
+            # lost the loop and treatment steps to a sqlcmd login failure). The loop
+            # file carries no GO or :setvar, so PyODBC runs it as one batch.
+            db_helper = sql_manager.config_parser.db_helper
+            sqlcmd_usable = (
+                (not db_helper.is_azure())
+                or db_helper.sqlcmd_is_go()
+                or bool((os.getenv('BCP_USERNAME') or '').strip())
+            )
+            if not sqlcmd_usable:
+                customer_logger.info(
+                    f"sqlcmd cannot authenticate to this environment (classic sqlcmd on Azure, "
+                    f"no SQL login): sequence {SQLCMD_SEQUENCE} files will run through PyODBC"
+                )
+
             for key, file_info in sql_files.items():
                 sequence = file_info.get('sequence', 0)
 
                 if 1 <= sequence <= PYODBC_MAX_SEQUENCE:
                     pyodbc_files[key] = file_info
-                elif sequence == SQLCMD_SEQUENCE:
+                elif sequence == SQLCMD_SEQUENCE and sqlcmd_usable:
                     sqlcmd_files[key] = file_info
+                elif sequence >= SQLCMD_SEQUENCE:
+                    # Sequence 78 without a usable sqlcmd, and anything numbered after
+                    # the loop file (78.tblAccount_Treatment, 79.tblHardship): these
+                    # were silently dropped before 2026-10-09.
+                    pyodbc_files[key] = file_info
                 else:
                     customer_logger.warning(
                         f"File sequence {sequence} outside expected range (1-{SQLCMD_SEQUENCE}): {file_info.get('filename', 'unknown')}"

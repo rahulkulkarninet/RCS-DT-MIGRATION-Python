@@ -1,5 +1,3 @@
-USE [sqldb-glass-dev-rc]
-GO
 
 /****** Object:  Table [dbo].[RC_TREATMENT]    Script Date: 26/03/2025 4:29:50 PM ******/
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RC_TREATMENT]') AND type in (N'U'))
@@ -31,3 +29,12 @@ CREATE TABLE [dbo].[RC_TREATMENT](
 GO
 
 
+
+-- Join-key indexes for the migration queries. The staging tables are bulk
+-- loaded and then joined per row by the Direct/*.sql steps; without these the
+-- optimiser has only a heap to work with and falls back to rescanning the whole
+-- table once per outer row. TRUNCATE preserves indexes, so these only need to be
+-- recreated when this script rebuilds the table.
+CREATE NONCLUSTERED INDEX [IX_RC_TREATMENT_Full_Debt_Code]
+    ON [dbo].[RC_TREATMENT] ([Full_Debt_Code])
+GO

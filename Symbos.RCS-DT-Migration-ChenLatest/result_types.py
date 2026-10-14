@@ -262,3 +262,29 @@ class MixedExecutionResult(TypedDict, total=False):
     total_execution_time: float
     method_breakdown: MixedExecutionMethodBreakdown
     error: str
+
+class TreatmentStepUpdateResult(TypedDict, total=False):
+    success: bool
+    mapping_file: str
+    total_codes_loaded: int
+    duplicate_codes_skipped: int
+    treated_rows: int
+    untreated_rows: int
+    closed_rows: int
+    unmapped_codes: List[str]
+    status_message: str
+    error: str
+
+
+class ArrangementStatusUpdateResult(TypedDict, total=False):
+    success: bool
+    rules_file: str
+    in_scope_rows: int
+    active_instalment_rows: int
+    active_deal_rows: int
+    no_arrangement_rows: int
+    treated_to_status_rows: int
+    young_to_step_rows: int
+    old_no_treatment_rows: int
+    status_message: str
+    error: str

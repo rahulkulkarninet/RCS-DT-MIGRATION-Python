@@ -4,7 +4,13 @@ import pandas as pd
 
 import text_normalization
 
-
+# CMP_Issue_1/2/3 are three independent occurrences of the same value domain in one
+# staging table, the same shape as Payment_Method appearing across RC_PAYMENTS/RC_DEAL/
+# RC_ARRANGEMENT in bank_transaction_method_service. Each is rewritten in place to the
+# canonical tblComplaintRoot label, feeding 78.tblComplaint.sql / tblComplaintIssue.
+#
+# Table and column names are hardcoded identifiers, never user input, so interpolating
+# them into SQL is safe and matches the rest of the repo.
 SOURCE_TABLE = 'RC_COMPLAINT_EXTRACT'
 SOURCE_COLUMNS: Tuple[str, ...] = ('CMP_Issue_1', 'CMP_Issue_2', 'CMP_Issue_3')
 

@@ -7,6 +7,7 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
           StatusID ,
           AccountStatusID ,
           ProductID ,
+          AccountTypeID ,
           AccountName ,
           AccountNumber ,
           AccountNumberClient ,
@@ -40,23 +41,27 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
                 1 ,
                 ISNULL(RC.MA_Status_AccountStatusID, {{AccountStatusID_Creation}}) , -- set by status_service.py
                 P.ProductID ,
+                ATY.AccountTypeID ,
                 LEFT(RC.Debtor_Code, 250) ,
                 NULL ,
-                rc.Debt_Ref_No ,
-                RC.Short_Debt_Code ,
+                LEFT(CR.ClientRef, 100) ,   -- AccountNumberClient
+                LEFT(REFS.OtherRefs, 100) , -- AccountNumberOther
                 RC.Full_Debt_Code ,
                 ISNULL(RC.Operator_ContactID, {{DefaultOperatorContactID}}) , -- set by operator_contact_service.py
                 RC.Orig_Debt ,
                 RC.Debit_Amts ,
                 RC.Paid_Amts ,
-                RC.Date_Time_Entered ,
+                -- Debtrak keeps LoadDate / LUPLastPaymentDate in UTC and renders them in local
+                -- time; DateOfDebt is a date only. RCS supplies Sydney local times, so an entry
+                -- after ~1 pm displayed a day late until this conversion (Louisa, 2026-10-13).
+                CAST(RC.Date_Time_Entered AS date) ,                                                              -- DateOfDebt
                 RC.Diary_Date ,
-                RC.Date_Time_Entered ,
+                CONVERT(datetime, RC.Date_Time_Entered AT TIME ZONE 'AUS Eastern Standard Time' AT TIME ZONE 'UTC') , -- LoadDate
                 RC.Closed ,
                 RC.Accept_Date ,
                 RC.Next_Act ,
                 RC.Last_Pay_Amt ,
-                RC.Last_Pay_Date ,
+                CONVERT(datetime, RC.Last_Pay_Date AT TIME ZONE 'AUS Eastern Standard Time' AT TIME ZONE 'UTC') ,     -- LUPLastPaymentDate
                 RC.Reason_Closed_ClosureReasonID , -- set by closure_reason_service.py
                 LEFT(RC.Score_Colour_DB, 30) ,
                 RC.Date_of_Debt ,
@@ -71,6 +76,32 @@ INSERT  INTO tblAccount WITH ( ROWLOCK )
                               WHERE     Product = RC.WorkType
                               ORDER BY  ProductID
                             ) P
+
+                OUTER APPLY ( SELECT TOP 1
+                                        AccountTypeID
+                              FROM      tblAccountType
+                              WHERE     AccountType = RC.Worktype
+                                        AND StatusID = 1
+                              ORDER BY  AccountTypeID
+                            ) ATY
+
+                CROSS APPLY ( SELECT NULLIF(LTRIM(RTRIM(RC.Account_No)), '') AS ClientRef
+                            ) CR
+
+                CROSS APPLY ( SELECT STRING_AGG(X.Ref, ' | ') WITHIN GROUP ( ORDER BY X.Ord ) AS OtherRefs
+                              FROM   ( SELECT MIN(V.Ord) AS Ord ,
+                                              V.Ref
+                                       FROM   ( VALUES ( 1, NULLIF(LTRIM(RTRIM(RC.Debt_Ref_No)), '') ),
+                                                       ( 2, NULLIF(LTRIM(RTRIM(RC.Debt_Ref_No2)), '') ),
+                                                       ( 3, NULLIF(LTRIM(RTRIM(RC.Debt_Ref_No3)), '') ),
+                                                       ( 4, NULLIF(LTRIM(RTRIM(RC.Debt_Ref_No_4)), '') ),
+                                                       ( 5, CONVERT(nvarchar(100), RC.Short_Debt_Code) )
+                                              ) V ( Ord, Ref )
+                                       WHERE  V.Ref IS NOT NULL
+                                              AND V.Ref <> ISNULL(CR.ClientRef, '')
+                                       GROUP BY V.Ref
+                                     ) X
+                            ) REFS
 
                 CROSS APPLY ( SELECT TRY_CONVERT(DATETIME,
                                         NULLIF(LTRIM(RTRIM(RC.Closed)), '')) AS DateClosed

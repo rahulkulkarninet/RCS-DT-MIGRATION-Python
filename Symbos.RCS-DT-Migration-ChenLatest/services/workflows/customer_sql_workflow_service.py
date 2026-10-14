@@ -104,6 +104,48 @@ class CustomerSQLWorkflowService:
             customer_logger.info(f"{'='*50}")
             timer.lap('mapping.status')
 
+            # Treatment step: derived from the extract by rule (treatment_step_codes.json).
+            treatment_step_result = processor.update_treatment_steps(customer_logger)
+            if not treatment_step_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'treatment_step_update_failed',
+                    treatment_step_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['treatment_step_update'] = treatment_step_result
+                return failure_result
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(f'TREATMENT STEP CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {treatment_step_result.get('status_message', 'N/A')}")
+            customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.treatment_step')
+
+            # Arrangement rule: in-scope accounts with no active arrangement leave their
+            # arrangement status (arrangement_status_rules.json). Overrides the two steps above.
+            arrangement_status_result = processor.update_arrangement_statuses(customer_logger)
+            if not arrangement_status_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'arrangement_status_update_failed',
+                    arrangement_status_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['treatment_step_update'] = treatment_step_result
+                failure_result['arrangement_status_update'] = arrangement_status_result
+                return failure_result
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(f'ARRANGEMENT STATUS CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {arrangement_status_result.get('status_message', 'N/A')}")
+            customer_logger.info(f"{'='*50}")
+            timer.lap('mapping.arrangement_status')
+
             bank_method_update_result = processor.update_payment_methods(customer_logger)
             if not bank_method_update_result.get('success', False):
                 failure_result = self.create_sql_failure_result(

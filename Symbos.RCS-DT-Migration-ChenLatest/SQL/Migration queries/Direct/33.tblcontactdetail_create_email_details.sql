@@ -20,8 +20,8 @@ INSERT  INTO tblContactDetail WITH ( ROWLOCK )
             {{LoadID}}
         FROM RC_DEBTOR RCC
         INNER JOIN tblContact C WITH (NOLOCK) ON C.Z_REF2 = RCC.Debtor_Code
-        CROSS APPLY STRING_SPLIT(RCC.Email_Addr, '|') X
-        WHERE LEN(RCC.Email_Addr) > 0
+        CROSS APPLY STRING_SPLIT(CONCAT_WS('|', NULLIF(RCC.Email_Addr, ''), NULLIF(RCC.Debtor_Other_Email_Addresses, '')), '|') X
+        WHERE (LEN(ISNULL(RCC.Email_Addr, '')) > 0 OR LEN(ISNULL(RCC.Debtor_Other_Email_Addresses, '')) > 0)
                 AND C.LoadID = {{LoadID}}
                 AND LTRIM(RTRIM(X.value)) != ''  -- Filter out empty values
 ;

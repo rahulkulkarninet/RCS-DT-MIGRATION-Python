@@ -28,6 +28,12 @@ from services.workflows.customer_complainant_workflow_service import (
 from services.workflows.customer_complaint_root_workflow_service import (
     CustomerComplaintRootWorkflowService,
 )
+from services.workflows.customer_hardship_status_workflow_service import (
+    CustomerHardshipStatusWorkflowService,
+)
+from services.workflows.customer_hardship_cause_workflow_service import (
+    CustomerHardshipCauseWorkflowService,
+)
 from services.workflows.customer_cost_workflow_service import (
     CustomerCostWorkflowService,
 )
@@ -61,6 +67,10 @@ from result_types import (
     ComplainantUpdateResult,
     ComplaintRootCheckResult,
     ComplaintRootUpdateResult,
+    HardshipStatusCheckResult,
+    HardshipStatusUpdateResult,
+    HardshipCauseCheckResult,
+    HardshipCauseUpdateResult,
     CostCheckResult,
     CostUpdateResult,
     BankTransactionMethodCheckResult,
@@ -84,6 +94,8 @@ from bank_transaction_method_service import BankTransactionMethodService
 from closure_reason_service import ClosureReasonService
 from complainant_service import ComplainantService
 from complaint_root_service import ComplaintRootService
+from hardship_status_service import HardshipStatusService
+from hardship_cause_service import HardshipCauseService
 from cost_service import CostService
 from frequency_service import FrequencyService
 from incident_type_service import IncidentTypeService
@@ -125,6 +137,8 @@ class CustomerProcessor:
         self.closure_reason_service: Optional[ClosureReasonService] = None
         self.complainant_service: Optional[ComplainantService] = None
         self.complaint_root_service: Optional[ComplaintRootService] = None
+        self.hardship_status_service: Optional[HardshipStatusService] = None
+        self.hardship_cause_service: Optional[HardshipCauseService] = None
         self.cost_service: Optional[CostService] = None
         self.frequency_service: Optional[FrequencyService] = None
         self.related_party_type_service: Optional[RelatedPartyTypeService] = None
@@ -151,6 +165,12 @@ class CustomerProcessor:
         )
         self.customer_complaint_root_workflow_service = (
             CustomerComplaintRootWorkflowService()
+        )
+        self.customer_hardship_status_workflow_service = (
+            CustomerHardshipStatusWorkflowService()
+        )
+        self.customer_hardship_cause_workflow_service = (
+            CustomerHardshipCauseWorkflowService()
         )
         self.customer_cost_workflow_service = (
             CustomerCostWorkflowService()
@@ -1227,6 +1247,142 @@ class CustomerProcessor:
 
     def _get_invalid_complaint_roots_from_db(self) -> List[str]:
         return self.customer_complaint_root_workflow_service.get_invalid_complaint_roots_from_db(self)
+
+    def update_hardship_statuses(
+        self,
+        customer_logger: logging.Logger,
+    ) -> HardshipStatusUpdateResult:
+        """
+        Replace RC_HARDSHIP_EXTRACT.Status codes with standardized
+        tblHardshipStatus labels using variables/hardship_status_codes.json, sweeping
+        unmapped values to the configured fallback label. NULL/blank are left as-is.
+        """
+        return self.customer_hardship_status_workflow_service.update_hardship_statuses(
+            self,
+            customer_logger,
+        )
+
+    def _check_hardship_statuses_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        status_update_result: Optional[HardshipStatusUpdateResult] = None,
+    ) -> HardshipStatusCheckResult:
+        """Check hardship statuses and report defaulted and unmapped values."""
+        return self.customer_hardship_status_workflow_service.check_hardship_statuses_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            status_update_result,
+        )
+
+    def _load_hardship_status_mapping_frame(
+        self,
+        status_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_hardship_status_workflow_service.load_hardship_status_mapping_frame(
+            self,
+            status_mapping,
+        )
+
+    def _resolve_hardship_status_fallback_label(self, fallback_label: Optional[str]) -> Optional[str]:
+        return self.customer_hardship_status_workflow_service.resolve_fallback_label(
+            self,
+            fallback_label,
+        )
+
+    def _build_hardship_status_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_hardship_status_workflow_service.build_hardship_status_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_hardship_statuses(
+        self,
+        resolution_frame: pd.DataFrame,
+        fallback_label: Optional[str] = None,
+    ) -> Tuple[int, int]:
+        return self.customer_hardship_status_workflow_service.bulk_update_hardship_statuses(
+            self,
+            resolution_frame,
+            fallback_label,
+        )
+
+    def _get_invalid_hardship_statuses_from_db(self) -> List[str]:
+        return self.customer_hardship_status_workflow_service.get_invalid_hardship_statuses_from_db(self)
+
+    def update_hardship_causes(
+        self,
+        customer_logger: logging.Logger,
+    ) -> HardshipCauseUpdateResult:
+        """
+        Replace RC_HARDSHIP_EXTRACT.Hardship_Cause codes (numeric IDs or text labels)
+        with standardized tblHardshipCause labels using variables/hardship_cause_codes.json,
+        sweeping unmapped values to the configured fallback label. NULL/blank are left as-is.
+        """
+        return self.customer_hardship_cause_workflow_service.update_hardship_causes(
+            self,
+            customer_logger,
+        )
+
+    def _check_hardship_causes_step(
+        self,
+        customer_code: str,
+        db: str,
+        customer_logger: logging.Logger,
+        cause_update_result: Optional[HardshipCauseUpdateResult] = None,
+    ) -> HardshipCauseCheckResult:
+        """Check hardship causes and report defaulted and unmapped values."""
+        return self.customer_hardship_cause_workflow_service.check_hardship_causes_step(
+            self,
+            customer_code,
+            db,
+            customer_logger,
+            cause_update_result,
+        )
+
+    def _load_hardship_cause_mapping_frame(
+        self,
+        cause_mapping: Dict[str, Any],
+    ) -> Tuple[pd.DataFrame, int]:
+        return self.customer_hardship_cause_workflow_service.load_hardship_cause_mapping_frame(
+            self,
+            cause_mapping,
+        )
+
+    def _resolve_hardship_cause_fallback_label(self, fallback_label: Optional[str]) -> Optional[str]:
+        return self.customer_hardship_cause_workflow_service.resolve_fallback_label(
+            self,
+            fallback_label,
+        )
+
+    def _build_hardship_cause_resolution_frame(
+        self,
+        mapping_frame: pd.DataFrame,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        return self.customer_hardship_cause_workflow_service.build_hardship_cause_resolution_frame(
+            self,
+            mapping_frame,
+        )
+
+    def _bulk_update_hardship_causes(
+        self,
+        resolution_frame: pd.DataFrame,
+        fallback_label: Optional[str] = None,
+    ) -> Tuple[int, int]:
+        return self.customer_hardship_cause_workflow_service.bulk_update_hardship_causes(
+            self,
+            resolution_frame,
+            fallback_label,
+        )
+
+    def _get_invalid_hardship_causes_from_db(self) -> List[str]:
+        return self.customer_hardship_cause_workflow_service.get_invalid_hardship_causes_from_db(self)
 
     def update_costs(
         self,

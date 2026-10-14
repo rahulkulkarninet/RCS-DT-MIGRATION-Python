@@ -286,10 +286,16 @@ CREATE TABLE [dbo].[RC_ACCOUNT_EXTRACT](
 	--   MA_Status_AccountStatusID (status_service.py)
 	--   Reason_Closed_ClosureReasonID (closure_reason_service.py)
 	--   Cause_Description_IncidentTypeID (incident_type_service.py)
+	--   Treatment_NewStep / Treatment_NewTreatmentCode (treatment_step_service.py)
+	--   Arrangement_Active: INSTALMENT / DEAL / NONE for open accounts in an
+	--     arrangement-type RCS status (arrangement_status_service.py)
 	[Operator_ContactID] [int] NULL,
 	[MA_Status_AccountStatusID] [int] NULL,
 	[Reason_Closed_ClosureReasonID] [int] NULL,
-	[Cause_Description_IncidentTypeID] [int] NULL
+	[Cause_Description_IncidentTypeID] [int] NULL,
+	[Treatment_NewStep] [int] NULL,
+	[Treatment_NewTreatmentCode] [nvarchar](50) NULL,
+	[Arrangement_Active] [nvarchar](20) NULL
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
 

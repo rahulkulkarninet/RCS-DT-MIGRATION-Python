@@ -241,6 +241,86 @@ class CustomerSQLWorkflowService:
                 customer_logger.warning(f'Invalid complaint issue values: {invalid_roots}')
             customer_logger.info(f"{'='*50}")
 
+            # Hardship: Status and Hardship_Cause are rewritten in place to the canonical
+            # tblHardshipStatus / tblHardshipCause labels before 79.tblHardship.sql joins on
+            # them, the same way MA_Status and Reason_Closed are handled above. Both steps
+            # no-op when this customer has no RC_HARDSHIP_EXTRACT.
+            hardship_status_update_result = processor.update_hardship_statuses(customer_logger)
+            if not hardship_status_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'hardship_status_update_failed',
+                    hardship_status_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                failure_result['closure_reason_check'] = closure_reason_check_result
+                failure_result['complainant_update'] = complainant_update_result
+                failure_result['complainant_check'] = complainant_check_result
+                failure_result['complaint_root_update'] = complaint_root_update_result
+                failure_result['complaint_root_check'] = complaint_root_check_result
+                failure_result['hardship_status_update'] = hardship_status_update_result
+                return failure_result
+
+            hardship_status_check_result = processor._check_hardship_statuses_step(
+                customer_code,
+                db,
+                customer_logger,
+                hardship_status_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'HARDSHIP STATUS CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {hardship_status_check_result.get('status_message', 'N/A')}")
+            invalid_hardship_statuses = hardship_status_check_result.get('invalid_statuses', []) or []
+            customer_logger.info(f'Invalid hardship status values found: {len(invalid_hardship_statuses)}')
+            if invalid_hardship_statuses:
+                customer_logger.warning(f'Invalid hardship status values: {invalid_hardship_statuses}')
+            customer_logger.info(f"{'='*50}")
+
+            hardship_cause_update_result = processor.update_hardship_causes(customer_logger)
+            if not hardship_cause_update_result.get('success', False):
+                failure_result = self.create_sql_failure_result(
+                    customer_code,
+                    db,
+                    customer_paths,
+                    'hardship_cause_update_failed',
+                    hardship_cause_update_result.get('error', 'Unknown error'),
+                )
+                failure_result['ma_status_update'] = status_update_result
+                failure_result['status_check'] = status_check_result
+                failure_result['closure_reason_update'] = closure_reason_update_result
+                failure_result['closure_reason_check'] = closure_reason_check_result
+                failure_result['complainant_update'] = complainant_update_result
+                failure_result['complainant_check'] = complainant_check_result
+                failure_result['complaint_root_update'] = complaint_root_update_result
+                failure_result['complaint_root_check'] = complaint_root_check_result
+                failure_result['hardship_status_update'] = hardship_status_update_result
+                failure_result['hardship_status_check'] = hardship_status_check_result
+                failure_result['hardship_cause_update'] = hardship_cause_update_result
+                return failure_result
+
+            hardship_cause_check_result = processor._check_hardship_causes_step(
+                customer_code,
+                db,
+                customer_logger,
+                hardship_cause_update_result,
+            )
+
+            customer_logger.info(f"{'='*50}")
+            customer_logger.info(
+                f'HARDSHIP CAUSE CHECK COMPLETE FOR CUSTOMER: [{db}] {customer_code}')
+            customer_logger.info(f"Result: {hardship_cause_check_result.get('status_message', 'N/A')}")
+            invalid_hardship_causes = hardship_cause_check_result.get('invalid_causes', []) or []
+            customer_logger.info(f'Invalid hardship cause values found: {len(invalid_hardship_causes)}')
+            if invalid_hardship_causes:
+                customer_logger.warning(f'Invalid hardship cause values: {invalid_hardship_causes}')
+            customer_logger.info(f"{'='*50}")
+
             pending_moves = getattr(processor, 'pending_file_moves', []) or []
             pending_file_count = sum(len(entry['files']) for entry in pending_moves)
             customer_logger.info(f'Files awaiting move (nothing moved yet): {pending_file_count}')

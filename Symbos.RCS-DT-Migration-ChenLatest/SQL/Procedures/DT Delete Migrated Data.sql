@@ -62,7 +62,14 @@ VALUES  ('tblLastLetterSent'), ('tblAlert'), ('tblWorkflowLine_NavigationAction'
         -- Application-populated against migrated accounts (first seen on testse).
         ('tblHardship_Document'), ('tblAccount_Contact_OutputType'), ('tblAccount_OutputType'),
         ('tblAccount_ActivityStop'), ('tblCommunicationBlock_AccountExemption'),
-        ('tblPaymentEGateway'), ('tblMediaAndDocumentGroup_Document');
+        ('tblPaymentEGateway'), ('tblMediaAndDocumentGroup_Document'),
+        -- Written by Direct/66 (complaint holds), Direct/78 and Direct/79 (the test-debtrak
+        -- hardship module) since 2026-10. Names absent on an older database are skipped.
+        ('tblAccount_Exclusion'), ('tblAccount_Treatment'),
+        ('tblHardshipRequest_Line'), ('tblHardshipRequest_Debtor'), ('tblHardshipRequest_Address'),
+        ('tblHardshipRequest_Dependant'), ('tblHardship_StatementVersion'), ('tblHardshipRequest'),
+        ('tblHardship_DocumentRequest'), ('tblHardship_PreferredContact'),
+        ('tblHardshipOutcome_Decision'), ('tblHardship_CauseSelection');
 
 -- Snapshot the state we are about to destroy.
 IF OBJECT_ID('tempdb..#ConstraintState') IS NOT NULL DROP TABLE #ConstraintState;
@@ -222,6 +229,165 @@ BEGIN
             @Remaining                              AS complaints_left_behind;
 
     DROP TABLE #ComplaintScope;
+END
+
+-- Complaint holds (Direct/66) and treatment allocations (Direct/78): both key on
+-- AccountID and would block the tblAccount delete.
+IF OBJECT_ID(N'[dbo].[tblAccount_Exclusion]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblAccount_Exclusion X
+               INNER JOIN dbo.tblAccount A ON A.AccountID = X.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblAccount_Treatment]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblAccount_Treatment X
+               INNER JOIN dbo.tblAccount A ON A.AccountID = X.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+-- The test-debtrak hardship module written by Direct/79: statement-of-financial-position
+-- request, its lines / debtor / address / dependant rows and the statement version that
+-- points at both the request and the hardship; then the checklist, preferred contact,
+-- outcome decision and cause rows that hang off tblHardship. All before tblHardship.
+IF OBJECT_ID(N'[dbo].[tblHardshipRequest_Line]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipRequest_Line X
+               INNER JOIN dbo.tblHardshipRequest R ON R.HardshipRequestID = X.HardshipRequestID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = R.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardshipRequest_Debtor]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipRequest_Debtor X
+               INNER JOIN dbo.tblHardshipRequest R ON R.HardshipRequestID = X.HardshipRequestID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = R.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardshipRequest_Address]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipRequest_Address X
+               INNER JOIN dbo.tblHardshipRequest R ON R.HardshipRequestID = X.HardshipRequestID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = R.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardshipRequest_Dependant]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipRequest_Dependant X
+               INNER JOIN dbo.tblHardshipRequest R ON R.HardshipRequestID = X.HardshipRequestID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = R.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardship_StatementVersion]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardship_StatementVersion X
+               INNER JOIN dbo.tblHardship H ON H.HardshipID = X.hardship_id
+               INNER JOIN dbo.tblAccount A ON A.AccountID = H.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardshipRequest]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipRequest X
+               INNER JOIN dbo.tblAccount A ON A.AccountID = X.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardship_DocumentRequest]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardship_DocumentRequest X
+               INNER JOIN dbo.tblHardship H ON H.HardshipID = X.HardshipID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = H.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardship_PreferredContact]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardship_PreferredContact X
+               INNER JOIN dbo.tblHardship H ON H.HardshipID = X.HardshipID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = H.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardshipOutcome_Decision]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardshipOutcome_Decision X
+               INNER JOIN dbo.tblHardship H ON H.HardshipID = X.hardship_id
+               INNER JOIN dbo.tblAccount A ON A.AccountID = H.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
+END
+
+IF OBJECT_ID(N'[dbo].[tblHardship_CauseSelection]', N'U') IS NOT NULL
+BEGIN
+    WHILE 1 = 1
+    BEGIN
+        DELETE TOP (@BatchSize) X
+        FROM   dbo.tblHardship_CauseSelection X
+               INNER JOIN dbo.tblHardship H ON H.HardshipID = X.HardshipID
+               INNER JOIN dbo.tblAccount A ON A.AccountID = H.AccountID
+        WHERE  A.LoadID = @LoadID;
+        IF @@ROWCOUNT = 0 BREAK;
+    END;
 END
 
 -- Application-populated: documents attached to a hardship. Must go before tblHardship.
@@ -1039,25 +1205,41 @@ while (@@ROWCOUNT >0)BEGIN
 	
 END
 
+-- Reversal pairs (49.tblpayment) reference each other through the self-referencing FKs
+-- FK_tblPayment_tblPayment / FK_tblBankTransaction_tblBankTransaction (NO ACTION). Break the links
+-- first so a pair split across two TOP (@BatchSize) deletes cannot fail the FK check.
+UPDATE P
+SET    P.Reversed_PaymentID = NULL
+FROM   tblPayment P
+INNER JOIN tblAccount A ON P.AccountID = A.AccountID
+WHERE  A.LoadID = @LoadID
+  AND  P.Reversed_PaymentID IS NOT NULL
+
+UPDATE BT
+SET    BT.Reversed_BankTransactionID = NULL
+FROM   tblBankTransaction BT
+WHERE  BT.LoadID = @LoadID
+  AND  BT.Reversed_BankTransactionID IS NOT NULL
+
 SELECT 1--Batch delete for tblPayment
 while (@@ROWCOUNT >0)BEGIN
 	DELETE TOP (@BatchSize) P
 	FROM tblPayment P
 	INNER JOIN tblAccount A ON P.AccountID = A.AccountID
 	WHERE A.LoadID = @LoadID
-	
-	
+
+
 END
 
+-- Bank transactions are deleted by their own LoadID (set in 48.tblbanktransaction): the payments that
+-- used to link them to the account have just been deleted, so a join through tblPayment finds nothing.
 SELECT 1--Batch delete for tblBankTransaction
 while (@@ROWCOUNT >0)BEGIN
 	DELETE TOP (@BatchSize) BT
 	FROM tblBankTransaction BT
-	INNER JOIN tblpayment P ON P.BankTransactionID = BT.BankTransactionID
-	INNER JOIN tblAccount A ON P.AccountID = A.AccountID
-	WHERE A.LoadID = @LoadID
-	
-	
+	WHERE BT.LoadID = @LoadID
+
+
 END
 
 SELECT 1--Batch delete for tblCostAudit

@@ -43,6 +43,8 @@ class MigrationExecutionService:
                     pyodbc_files[key] = file_info
                 elif sequence == SQLCMD_SEQUENCE:
                     sqlcmd_files[key] = file_info
+                elif sequence > SQLCMD_SEQUENCE:
+                    pyodbc_files[key] = file_info
                 else:
                     customer_logger.warning(
                         f"File sequence {sequence} outside expected range (1-{SQLCMD_SEQUENCE}): {file_info.get('filename', 'unknown')}"

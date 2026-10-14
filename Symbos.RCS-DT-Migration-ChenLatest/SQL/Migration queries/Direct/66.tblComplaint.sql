@@ -335,7 +335,7 @@ INSERT  INTO tblComplaint WITH ( ROWLOCK )
                             ) SRCLK
                 OUTER APPLY ( SELECT TOP 1 ComplaintOriginatorID
                               FROM   tblComplaintOriginator
-                              WHERE  OriginatorType = CMP.CMP_Entity
+                              WHERE  OriginatorType = CASE WHEN CMP.CMP_Entity = 'Client' THEN 'Entity' ELSE CMP.CMP_Entity END
                               ORDER BY ComplaintOriginatorID
                             ) ORIG
                 OUTER APPLY ( SELECT TOP 1 ComplaintLevelID
@@ -560,3 +560,214 @@ INSERT  INTO TblComplaintHistories WITH ( ROWLOCK )
         FROM    HISTORY H
         ORDER BY H.ComplaintId, H.CreateTs, H.Kind, H.Seq
 ;
+
+-- =====================================================================================
+-- Account holds and statuses for the complaints inserted above.
+--
+-- The application puts a "Complaint / dispute hold" on an account (tblAccount_Exclusion)
+-- when a complaint is lodged and lifts it when the complaint is resolved. The migration
+-- only ever wrote the complaint, so a migrated complaint showed the Active Complaint flag
+-- with no block (Stacey Mitchell, Complaints/Hardship Mapping chat, 2026-10-08 07:05 UTC).
+-- Her rules, 2026-10-08 22:06 and 23:11 UTC:
+--
+--   Open complaint        Account status Complaint Lodged; hold from the RCS date received
+--                         with no end date, as when a complaint is lodged in Debtrak.
+--   Closed complaint on an account RCS still has in COMPLAINTHOLD
+--     closed < 14 days    Status Complaint Resolved Hold; hold from the closure date for
+--                         the rest of the 14 days. When the hold expires the application
+--                         (spAccountExclusionEnd) moves the account to the hold's
+--                         FutureAccountStatusID, set here to the status the account had
+--                         before the complaint.
+--     closed >= 14 days   No hold; the account goes straight back to that prior status.
+--
+-- An account in COMPLAINT (lodged, not yet on hold) whose complaints are all closed gets
+-- the same closed treatment: leaving it on Complaint Lodged with nothing open would be
+-- wrong. ASSUMPTION, to be confirmed with Stacey - her rule names COMPLAINTHOLD only.
+--
+-- The prior status is the newest entry of RC_ACCOUNT_EXTRACT.Status_history (most recent
+-- first, CODE.n) that is not a complaint code, resolved through RC_ACCOUNT_STATUS_MAP -
+-- every code of account_status_codes.json and every tblAccountStatus label, written by the
+-- status mapping step (status_service.py). No usable entry: {{AccountStatusID_Creation}},
+-- and the count is printed.
+--
+-- The status change is written the way spWorkflowLineSaveStatus writes one: tblAccount
+-- and the active tblWorkflowLine rows take the status, LUPAccountStatusChangeDate the
+-- effective date, and tblWorkflowLineAudit gets a row. The hold row follows
+-- spAccountExclusionSave plus the complaint-module columns the application fills on
+-- test-debtrak (origin, subject, reason, previous status). Only accounts whose complaints
+-- this session inserted are touched, and an account already carrying an active hold of
+-- the type is skipped, so a re-run adds nothing.
+-- =====================================================================================
+DECLARE @StatusLodged INT = ( SELECT TOP 1 AccountStatusID
+                              FROM   tblAccountStatus WITH ( NOLOCK )
+                              WHERE  AccountStatus = 'Complaint Lodged' AND StatusID = 1
+                              ORDER BY AccountStatusID );
+-- Stacey built the resolved hold status on test-debtrak; the label is matched loosely
+-- (dash or en dash, with or without spaces) and the exact name preferred.
+DECLARE @StatusResolvedHold INT = ( SELECT TOP 1 AccountStatusID
+                                    FROM   tblAccountStatus WITH ( NOLOCK )
+                                    WHERE  StatusID = 1
+                                           AND REPLACE(REPLACE(REPLACE(AccountStatus, NCHAR(8211), '-'), ' ', ''), '-', '')
+                                               IN ( 'ComplaintResolvedHold', 'Complaint14DayHold' )
+                                    ORDER BY CASE WHEN AccountStatus = 'Complaint Resolved Hold' THEN 0 ELSE 1 END, AccountStatusID );
+DECLARE @HoldType INT = ( SELECT TOP 1 AccountExclusionTypeID
+                          FROM   tblAccountExclusionType WITH ( NOLOCK )
+                          WHERE  AccountExclusionType = 'Complaint / dispute hold' AND StatusID = 1
+                          ORDER BY AccountExclusionTypeID );
+IF @HoldType IS NULL
+    SET @HoldType = ( SELECT TOP 1 DefaultAccountExclusionTypeID FROM vwHost );
+-- tblAccountExclusionOrigin on test-debtrak: 1 = a user, 6 = a system job (the
+-- complaint.missing-hold-catch-up job writes 6). Migration holds are system-placed.
+DECLARE @HoldOrigin INT = 6;
+
+IF @StatusLodged IS NULL OR @StatusResolvedHold IS NULL OR @HoldType IS NULL
+    THROW 50066, 'Complaint holds: need active tblAccountStatus rows Complaint Lodged and Complaint Resolved Hold and a Complaint / dispute hold exclusion type (or vwHost.DefaultAccountExclusionTypeID).', 1;
+
+IF OBJECT_ID('tempdb..#CMPACC') IS NOT NULL DROP TABLE #CMPACC;
+SELECT  A.AccountID ,
+        A.AccountStatusID AS CurrentStatusID ,
+        UPPER(LTRIM(RTRIM(RC.MA_Status))) AS RcsStatus ,
+        SUM(CASE WHEN C.ClosedDate IS NULL THEN 1 ELSE 0 END) AS OpenCount ,
+        MIN(CASE WHEN C.ClosedDate IS NULL THEN C.DateReceived END) AS OpenFrom ,
+        MAX(C.ClosedDate) AS LastClosed ,
+        PRI.Code AS PriorCode ,
+        PRI.AccountStatusID AS PriorStatusID
+INTO    #CMPACC
+FROM    tblAccount A WITH ( NOLOCK )
+        INNER JOIN tblComplaint C WITH ( NOLOCK ) ON C.AccountId = A.AccountID
+                                                  AND C.CreateSessionId = {{CurrentSessionID}}
+        INNER JOIN RC_ACCOUNT_EXTRACT RC ON RC.Full_Debt_Code = A.AccountNumberPrevious
+        -- Newest non-complaint entry of the status history, e.g.
+        -- COMPLAINTHOLD.1|COMPLAINT.1|TREATMENT.6|... -> TREATMENT.
+        OUTER APPLY ( SELECT TOP 1 T.Code, M.AccountStatusID
+                      FROM   ( SELECT S.ordinal ,
+                                      UPPER(LTRIM(RTRIM(CASE WHEN CHARINDEX('.', S.value) > 0
+                                                             THEN LEFT(S.value, CHARINDEX('.', S.value) - 1)
+                                                             ELSE S.value END))) AS Code
+                               FROM   STRING_SPLIT(RC.Status_history, '|', 1) S ) T
+                             LEFT JOIN RC_ACCOUNT_STATUS_MAP M
+                                    ON M.Status_Key = UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(T.Code, ' ', ''), '-', ''), '/', ''), '_', ''), '.', ''))
+                      WHERE  T.Code <> '' AND T.Code NOT LIKE 'COMPLAINT%'
+                      ORDER BY T.ordinal ) PRI
+WHERE   A.LoadID = {{LoadID}}
+GROUP BY A.AccountID, A.AccountStatusID, RC.MA_Status, PRI.Code, PRI.AccountStatusID;
+
+IF OBJECT_ID('tempdb..#CMPACT') IS NOT NULL DROP TABLE #CMPACT;
+SELECT  H.AccountID ,
+        H.CurrentStatusID ,
+        H.PriorCode ,
+        H.PriorStatusID ,
+        ACT.Action ,
+        CASE ACT.Action WHEN 'LODGED' THEN @StatusLodged
+                        WHEN 'RESOLVEDHOLD' THEN @StatusResolvedHold
+                        ELSE ISNULL(H.PriorStatusID, {{AccountStatusID_Creation}}) END AS NewStatusID ,
+        ISNULL(H.PriorStatusID, {{AccountStatusID_Creation}}) AS ReturnStatusID ,
+        CASE ACT.Action WHEN 'LODGED' THEN H.OpenFrom ELSE H.LastClosed END AS EffectiveDate ,
+        CASE ACT.Action WHEN 'RESOLVEDHOLD' THEN DATEADD(day, 14, CAST(H.LastClosed AS DATE)) END AS HoldExpiry
+INTO    #CMPACT
+FROM    #CMPACC H
+        CROSS APPLY ( SELECT CASE WHEN H.OpenCount > 0 THEN 'LODGED'
+                                  WHEN H.RcsStatus IN ( 'COMPLAINTHOLD', 'COMPLAINT' ) AND H.LastClosed IS NULL THEN NULL
+                                  WHEN H.RcsStatus IN ( 'COMPLAINTHOLD', 'COMPLAINT' )
+                                       AND DATEADD(day, 14, CAST(H.LastClosed AS DATE)) > CAST(GETDATE() AS DATE) THEN 'RESOLVEDHOLD'
+                                  WHEN H.RcsStatus IN ( 'COMPLAINTHOLD', 'COMPLAINT' ) THEN 'RELEASE'
+                             END AS Action ) ACT
+WHERE   ACT.Action IS NOT NULL;
+
+-- Audit first (the application audits the line after the change, with the new status),
+-- then the lines and the account.
+INSERT  INTO tblWorkflowLineAudit WITH ( ROWLOCK )
+        ( AccountID, WorkflowLineID, AccountStatusID, AuditTS, CreateID, CreateSessionID, CreateTS, StatusID, LoadID, MasterWorkflowID )
+        SELECT  W.AccountID, W.WorkflowLineID, X.NewStatusID, X.EffectiveDate, 1, {{CurrentSessionID}}, GETDATE(), 1, {{LoadID}}, W.MasterWorkflowID
+        FROM    tblWorkflowLine W WITH ( NOLOCK )
+                INNER JOIN #CMPACT X ON X.AccountID = W.AccountID
+        WHERE   W.StatusID = 1
+                AND W.AccountStatusID <> X.NewStatusID;
+
+UPDATE  W WITH ( ROWLOCK )
+SET     W.AccountStatusID = X.NewStatusID ,
+        W.ModifyID = 1 ,
+        W.ModifySessionID = {{CurrentSessionID}} ,
+        W.ModifyTS = GETDATE()
+FROM    tblWorkflowLine W
+        INNER JOIN #CMPACT X ON X.AccountID = W.AccountID
+WHERE   W.StatusID = 1
+        AND W.AccountStatusID <> X.NewStatusID;
+
+UPDATE  A WITH ( ROWLOCK )
+SET     A.AccountStatusID = X.NewStatusID ,
+        A.LUPAccountStatusChangeDate = X.EffectiveDate ,
+        A.ModifyID = 1 ,
+        A.ModifySessionID = {{CurrentSessionID}} ,
+        A.ModifyTS = GETDATE()
+FROM    tblAccount A
+        INNER JOIN #CMPACT X ON X.AccountID = A.AccountID
+WHERE   A.AccountStatusID <> X.NewStatusID;
+
+INSERT  INTO tblAccount_Exclusion WITH ( ROWLOCK )
+        ( AccountID ,
+          StartDate ,
+          ExpiryDate ,
+          CreateID ,
+          CreateTS ,
+          CreateSessionID ,
+          ModifyID ,
+          ModifyTS ,
+          ModifySessionID ,
+          StatusID ,
+          SourceID ,
+          AccountExclusionTypeID ,
+          FutureAccountStatusID ,
+          FutureHoldDays ,
+          -- complaint-module columns (test-debtrak)
+          ContactBlockPolicyID ,
+          change_type ,
+          is_pending ,
+          SourceWorkflowLineID ,
+          AccountExclusionOriginID ,
+          CreatedBySubject ,
+          reason ,
+          PreviousAccountStatusID
+        )
+        SELECT  X.AccountID ,
+                X.EffectiveDate ,
+                X.HoldExpiry ,
+                1 ,
+                GETDATE() ,
+                {{CurrentSessionID}} ,
+                1 ,
+                GETDATE() ,
+                {{CurrentSessionID}} ,
+                1 ,
+                NULL ,
+                @HoldType ,
+                X.ReturnStatusID ,
+                NULL ,
+                1 ,
+                1 ,
+                0 ,
+                0 ,
+                @HoldOrigin ,
+                'system:migration' ,
+                CASE X.Action
+                    WHEN 'LODGED' THEN 'Complaint open in RCS at migration, lodged ' + CONVERT(VARCHAR(10), X.EffectiveDate, 120) + ' (hold until resolved).'
+                    ELSE 'Complaint closed in RCS on ' + CONVERT(VARCHAR(10), X.EffectiveDate, 120) + '; resolved hold to ' + CONVERT(VARCHAR(10), X.HoldExpiry, 120) + ', then back to the status held before the complaint.'
+                END ,
+                X.ReturnStatusID
+        FROM    #CMPACT X
+        WHERE   X.Action IN ( 'LODGED', 'RESOLVEDHOLD' )
+                AND NOT EXISTS ( SELECT 1 FROM tblAccount_Exclusion E WITH ( NOLOCK )
+                                 WHERE  E.AccountID = X.AccountID
+                                        AND E.StatusID = 1
+                                        AND E.AccountExclusionTypeID = @HoldType );
+
+DECLARE @HoldSummary NVARCHAR(400) =
+      'Complaint holds: lodged (open) ' + CAST(( SELECT COUNT(*) FROM #CMPACT WHERE Action = 'LODGED' ) AS NVARCHAR(10))
+    + ', resolved hold (closed < 14 days) ' + CAST(( SELECT COUNT(*) FROM #CMPACT WHERE Action = 'RESOLVEDHOLD' ) AS NVARCHAR(10))
+    + ', released to prior status (closed >= 14 days) ' + CAST(( SELECT COUNT(*) FROM #CMPACT WHERE Action = 'RELEASE' ) AS NVARCHAR(10))
+    + ', prior status not resolved (creation status used) ' + CAST(( SELECT COUNT(*) FROM #CMPACT WHERE Action <> 'LODGED' AND PriorStatusID IS NULL ) AS NVARCHAR(10))
+    + ', accounts in RCS COMPLAINT (not COMPLAINTHOLD) treated as closed ' + CAST(( SELECT COUNT(*) FROM #CMPACC WHERE OpenCount = 0 AND RcsStatus = 'COMPLAINT' ) AS NVARCHAR(10));
+PRINT @HoldSummary;
+
+DROP TABLE #CMPACT;
+DROP TABLE #CMPACC;
